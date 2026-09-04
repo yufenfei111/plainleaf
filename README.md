@@ -32,4 +32,4 @@ Flutter 3.x（fvm 锁版）· Dart 3 · flutter_riverpod 2.x · go_router · Dri
 ## 文档
 
 - **开发文档（唯一开发执行依据）**：[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) —— 评审结论、修订版 16 周路线、修正版架构与数据模型、功能开发规范、阶段 0 逐日清单、归档方案、变更记录
-- 历史 HTML 计划书（项目计划书、技术选型与架构图）内容已被开发文档吸收修订，冻结归档于 `docs/archive/`，不再维护（归档迁移待执行）
+- 历史 HTML 计划书（[项目计划书](docs/archive/相册记事本-项目计划书.html)、[技术选型与架构图](docs/archive/技术选型与架构图.html)）内容已被开发文档吸收修订，冻结于 `docs/archive/`，只读不再维护
