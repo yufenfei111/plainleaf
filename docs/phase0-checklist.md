@@ -16,14 +16,14 @@
 
 **目标**：本机能编译，真机能跑，仓库里长出 Flutter 工程。
 
-- [ ] 安装 Flutter SDK（稳定版），`flutter --version` 可用
-- [ ] 安装 fvm，`fvm install <锁定版本>` + `fvm use` 生成 `.fvmrc`（锁版，避免"我机器能跑"）
-- [ ] `flutter doctor` 全绿（Android toolchain / 真机识别 / license 已接受）
-- [ ] 在 plainleaf 仓库根目录初始化工程：`flutter create . --org com.plainleaf.app --project-name plainleaf`
-      （勿沿用 counter_demo 的 org；create 生成的 README 与现有 README 冲突时，以仓库 README 为准手动合并）
-- [ ] 真机跑通空壳：USB 调试开启，`flutter run -d <device>` 手机亮起 Flutter 默认页
+- [x] 安装 Flutter SDK（稳定版），`flutter --version` 可用 → 3.47.2 stable / Dart 3.13.2
+- [x] 安装 fvm，`fvm install <锁定版本>` + `fvm use` 生成 `.fvmrc`（锁版，避免"我机器能跑"）→ fvm 4.3.0 锁定 3.47.2；Windows 符号链接权限问题用 junction 等效替代，见 devlog-w1 Day1
+- [x] `flutter doctor` 全绿（Android toolchain / 真机识别 / license 已接受）→ No issues found（真机待连接）
+- [x] 在 plainleaf 仓库根目录初始化工程：`flutter create . --org com.plainleaf.app --project-name plainleaf`
+      （实际用 `--platforms=android,ios,windows` 收敛目标平台；注意 --org 会拼出 com.plainleaf.app.plainleaf，已手工修正为 com.plainleaf.app，详见 devlog-w1 Day1 卡点 1）
+- [ ] 真机跑通空壳：USB 调试开启，`flutter run -d <device>` 手机亮起 Flutter 默认页（**待连接真机，需用户操作**）
 
-**验收**：`flutter build apk --debug` 在本机成功产出 APK；真机安装可打开。
+**验收**：`flutter build apk --debug` 在本机成功产出 APK（✅ 已产出，aapt2 核验包名/应用名正确）；真机安装可打开（⏳ 待真机）。
 **产出**：`lib/main.dart`、`pubspec.yaml`、`.fvmrc` 等提交 dev（或留 TODO）。
 
 ---
