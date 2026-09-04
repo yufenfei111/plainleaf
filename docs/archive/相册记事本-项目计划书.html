@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>拾光札记 · 相册记事本管理软件 项目计划书</title>
+<style>
+  :root{
+    --ink:#1f2933;
+    --ink-2:#52606d;
+    --ink-3:#7b8794;
+    --bg:#fbfaf6;
+    --card:#ffffff;
+    --line:#e6e3da;
+    --accent:#3d9a8b;
+    --accent-soft:#e8f4f1;
+    --accent-2:#5b8db8;
+    --warn-bg:#fdf3e3;
+    --warn-line:#e8c98a;
+    --danger:#c15f5f;
+    --radius:14px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:"PingFang SC","Microsoft YaHei","Segoe UI",Arial,sans-serif;
+    line-height:1.75;
+    font-size:15px;
+  }
+  .page{max-width:960px;margin:0 auto;padding:0 28px 80px;}
+  /* 封面 */
+  .cover{
+    margin:0 -28px 36px;
+    padding:72px 56px 56px;
+    background:linear-gradient(135deg,#3d9a8b 0%,#5b8db8 100%);
+    color:#fff;
+  }
+  .cover .tag{
+    display:inline-block;font-size:13px;letter-spacing:3px;
+    border:1px solid rgba(255,255,255,.55);border-radius:999px;
+    padding:3px 14px;margin-bottom:22px;
+  }
+  .cover h1{font-size:40px;margin:0 0 10px;letter-spacing:2px;font-weight:700;}
+  .cover .en{font-size:16px;opacity:.85;letter-spacing:1px;margin-bottom:26px;}
+  .cover .slogan{font-size:17px;max-width:640px;opacity:.95;margin-bottom:34px;}
+  .cover .meta{display:flex;flex-wrap:wrap;gap:10px 28px;font-size:13.5px;opacity:.92;}
+  .cover .meta b{font-weight:600;}
+  /* 目录 */
+  .toc{
+    background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:22px 28px;margin-bottom:40px;
+  }
+  .toc h3{margin:0 0 12px;font-size:16px;color:var(--accent);}
+  .toc ol{margin:0;padding-left:22px;columns:2;column-gap:40px;}
+  .toc li{margin:4px 0;break-inside:avoid;}
+  .toc a{color:var(--ink-2);text-decoration:none;font-size:14px;}
+  .toc a:hover{color:var(--accent);}
+  /* 章节 */
+  section{margin-bottom:44px;}
+  h2{
+    font-size:23px;margin:0 0 18px;padding-left:14px;
+    border-left:5px solid var(--accent);line-height:1.3;
+  }
+  h2 .no{color:var(--accent);font-weight:700;margin-right:8px;}
+  h3{font-size:17.5px;margin:26px 0 10px;color:var(--ink);}
+  h4{font-size:15.5px;margin:18px 0 8px;color:var(--ink-2);}
+  p{margin:8px 0;}
+  ul,ol{margin:8px 0;padding-left:24px;}
+  li{margin:4px 0;}
+  .card{
+    background:var(--card);border:1px solid var(--line);
+    border-radius:var(--radius);padding:18px 22px;margin:14px 0;
+  }
+  .grid2{display:flex;flex-wrap:wrap;gap:14px;}
+  .grid2 > div{flex:1 1 300px;min-width:0;}
+  .kv{
+    background:var(--accent-soft);border-radius:10px;padding:12px 16px;
+    font-size:14px;margin:10px 0;
+  }
+  .kv b{color:var(--accent);}
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:13.8px;background:var(--card);}
+  th,td{border:1px solid var(--line);padding:9px 11px;text-align:left;vertical-align:top;}
+  th{background:#f3f1ea;font-weight:600;color:var(--ink);}
+  td .small{color:var(--ink-3);font-size:12.5px;}
+  .star{color:#d99a2b;font-weight:600;white-space:nowrap;}
+  .pill{
+    display:inline-block;font-size:12px;padding:1px 9px;border-radius:999px;
+    background:var(--accent-soft);color:var(--accent);margin-right:5px;white-space:nowrap;
+  }
+  .pill.must{background:#e8f4f1;color:#2f7d70;}
+  .pill.should{background:#eaf1f8;color:#3f6f99;}
+  .pill.could{background:#f3f1ea;color:#7b8794;}
+  .pill.wont{background:#f7ecec;color:#a35656;}
+  .note{
+    background:var(--warn-bg);border:1px solid var(--warn-line);
+    border-radius:10px;padding:12px 16px;font-size:13.8px;margin:14px 0;
+  }
+  .note::before{content:"⚠ 注意";font-weight:700;color:#b07f24;display:block;margin-bottom:3px;font-size:13px;}
+  .tip{
+    background:var(--accent-soft);border-radius:10px;padding:12px 16px;font-size:13.8px;margin:14px 0;
+  }
+  .tip::before{content:"✓ 工程建议";font-weight:700;color:var(--accent);display:block;margin-bottom:3px;font-size:13px;}
+  code{
+    background:#f0efe9;padding:1px 6px;border-radius:5px;font-size:13px;
+    font-family:Consolas,"Courier New",monospace;color:#3d6f66;
+  }
+  pre{
+    background:#2b333b;color:#e8eaed;border-radius:10px;padding:16px 18px;
+    overflow-x:auto;font-size:12.8px;line-height:1.65;
+    font-family:Consolas,"Courier New",monospace;
+  }
+  pre .c{color:#8fa3b3;}
+  /* 模块树 */
+  .tree{font-family:Consolas,monospace;font-size:13.3px;line-height:1.9;}
+  /* 时间线 */
+  .phase{
+    display:flex;gap:16px;margin:14px 0;align-items:stretch;
+  }
+  .phase .week{
+    flex:0 0 96px;background:var(--accent);color:#fff;border-radius:10px;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    padding:10px 6px;font-size:13px;text-align:center;
+  }
+  .phase .week b{font-size:15px;}
+  .phase .body{
+    flex:1 1 auto;background:var(--card);border:1px solid var(--line);
+    border-radius:10px;padding:12px 16px;font-size:13.8px;
+  }
+  .phase .body h4{margin:0 0 5px;font-size:14.5px;color:var(--accent);}
+  .phase .body ul{margin:4px 0 0;}
+  /* MVP 边界 */
+  .mvp-box{display:flex;flex-wrap:wrap;gap:14px;}
+  .mvp-in,.mvp-out{flex:1 1 320px;min-width:0;border-radius:var(--radius);padding:16px 20px;}
+  .mvp-in{background:#eef7f4;border:1px solid #bfe0d8;}
+  .mvp-out{background:#f6f4ef;border:1px solid var(--line);}
+  .mvp-in h4{color:#2f7d70;margin-top:0;}
+  .mvp-out h4{color:var(--ink-3);margin-top:0;}
+  .footer{
+    margin-top:50px;padding-top:20px;border-top:1px solid var(--line);
+    color:var(--ink-3);font-size:12.8px;
+  }
+  @media (max-width:640px){
+    .page{padding:0 16px 60px;}
+    .cover{margin:0 -16px 28px;padding:44px 24px 36px;}
+    .cover h1{font-size:30px;}
+    .toc ol{columns:1;}
+    .phase{flex-direction:column;}
+    .phase .week{flex-direction:row;gap:8px;}
+  }
+  @media print{
+    body{background:#fff;font-size:12px;}
+    .card,.toc,table,.phase .body{break-inside:avoid;}
+    .cover{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+    section{break-before:auto;}
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ============ 封面 ============ -->
+  <header class="cover">
+    <span class="tag">项目计划书 · PROJECT PROPOSAL</span>
+    <h1>拾光札记</h1>
+    <div class="en">MemoLeaf — Photo × Note × Diary, Local-First</div>
+    <div class="slogan">
+      一款兼顾「生活记录」与「学习管理」的本地优先多媒体相册记事本：拍照即记、图文时间轴、日记打卡、学习笔记与待办，数据完全属于用户自己。
+    </div>
+    <div class="meta">
+      <span><b>文档版本：</b>v1.0</span>
+      <span><b>编制日期：</b>2026-09-03</span>
+      <span><b>开发模式：</b>个人独立开发（课余）</span>
+      <span><b>计划周期：</b>16 周（约 4 个月）</span>
+      <span><b>目标平台：</b>Android 优先，兼顾 Windows / iOS</span>
+    </div>
+  </header>
+
+  <!-- ============ 目录 ============ -->
+  <nav class="toc">
+    <h3>目录</h3>
+    <ol>
+      <li><a href="#s1">项目概述与定位</a></li>
+      <li><a href="#s2">市场与开源竞品调研</a></li>
+      <li><a href="#s3">用户画像与核心场景</a></li>
+      <li><a href="#s4">需求分析与功能规划</a></li>
+      <li><a href="#s5">产品设计与信息架构</a></li>
+      <li><a href="#s6">技术选型方案</a></li>
+      <li><a href="#s7">系统架构与数据模型</a></li>
+      <li><a href="#s8">16 周开发路线图</a></li>
+      <li><a href="#s9">质量保障与工程规范</a></li>
+      <li><a href="#s10">风险识别与对策</a></li>
+      <li><a href="#s11">远期规划（学习分享社区）</a></li>
+      <li><a href="#s12">零基础起步清单与学习资源</a></li>
+      <li><a href="#s13">附录：资料来源</a></li>
+    </ol>
+  </nav>
+
+  <!-- ============ 1 项目概述 ============ -->
+  <section id="s1">
+    <h2><span class="no">01</span>项目概述与定位</h2>
+
+    <h3>1.1 项目背景</h3>
+    <p>学生与年轻用户的记录行为正在碎片化：照片在系统相册、课堂笔记在笔记 App、待办在清单工具、心情日记又在另一个日记 App，数据彼此割裂，回看时无法还原「那天到底发生了什么」。与此同时，Day One 等成熟产品订阅价格偏高（约 34.99 美元/年），而多数国产应用存在广告、强制注册、云端数据不可控等问题。</p>
+    <p>GitHub 上「本地优先（Local-First）+ 开源 + 跨平台」的记录类工具在 2025—2026 年持续升温（详见第 2 章实测数据），证明「数据自有、离线可用、开放同步」是被验证的产品方向。</p>
+
+    <h3>1.2 产品定位（一句话）</h3>
+    <div class="kv">
+      <b>定位：</b>面向学生与年轻人群的「生活 + 学习」双空间多媒体记录工具 —— 以图文时间轴为骨架，融合相册、笔记、日记、待办与学习统计；<b>本地优先、免注册可用、支持 WebDAV 自主同步与端到端加密</b>。
+    </div>
+
+    <h3>1.3 项目目标</h3>
+    <div class="grid2">
+      <div class="card">
+        <h4>产品目标</h4>
+        <ul>
+          <li>30 秒内完成一条「图文 + 标签」记录，降低记录门槛；</li>
+          <li>一条时间轴串联照片、笔记、日记、待办、学习打卡；</li>
+          <li>不联网可用全部核心功能，数据可一键导出不被锁定；</li>
+          <li>形成可在校园内传播的「学习分享卡片」导出能力。</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h4>个人成长目标</h4>
+        <ul>
+          <li>完整经历一次「需求 → 设计 → 开发 → 测试 → 发布」闭环；</li>
+          <li>掌握 Flutter 跨平台开发、本地数据库、状态管理与同步；</li>
+          <li>产出可写进简历 / 竞赛答辩的开源项目（对标挑战杯、软著）；</li>
+          <li>GitHub 开源，争取 100+ Star 的第一版作品。</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3>1.4 非目标（第一版明确不做）</h3>
+    <ul>
+      <li>不做多人实时协同编辑（CRDT 复杂度高，列入远期）；</li>
+      <li>不自建服务器做账号体系（第一版无后端，同步走用户自有 WebDAV）；</li>
+      <li>不做视频剪辑、AI 生图等重能力（仅预留接口）；</li>
+      <li>不上架 App Store（需付费开发者账号，Android APK + Windows 先行）。</li>
+    </ul>
+  </section>
+
+  <!-- ============ 2 竞品调研 ============ -->
+  <section id="s2">
+    <h2><span class="no">02</span>市场与开源竞品调研</h2>
+    <p>以下开源项目数据来自 2026-09-03 通过 GitHub 官方搜索接口的实时查询结果，商业产品信息来自其官网与公开评测（来源见附录）。</p>
+
+    <h3>2.1 开源标杆项目（Star 数为当日实测）</h3>
+    <table>
+      <thead>
+        <tr><th>项目</th><th>Star</th><th>技术栈</th><th>定位</th><th>可借鉴点</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><b>Immich</b><br><span class="small">immich-app/immich</span></td>
+          <td class="star">113.3k</td>
+          <td>Flutter + NestJS + Svelte</td>
+          <td>自托管照片/视频备份，谷歌相册替代品</td>
+          <td>移动端相册备份、机器学习语义搜索、多端架构</td>
+        </tr>
+        <tr>
+          <td><b>AppFlowy</b><br><span class="small">AppFlowy-IO/AppFlowy</span></td>
+          <td class="star">76.2k</td>
+          <td>Flutter / Dart</td>
+          <td>开源 Notion 替代，协作工作空间</td>
+          <td>Flutter 富文本编辑器、数据库视图、跨平台工程组织</td>
+        </tr>
+        <tr>
+          <td><b>Joplin</b><br><span class="small">laurent22/joplin</span></td>
+          <td class="star">56.2k</td>
+          <td>React Native + TypeScript</td>
+          <td>隐私优先笔记，支持 WebDAV 与端到端加密</td>
+          <td><b>WebDAV 开放同步 + 应用层 E2EE</b> 的成熟范式</td>
+        </tr>
+        <tr>
+          <td><b>note-gen</b><br><span class="small">codexu/note-gen</span></td>
+          <td class="star">12.7k</td>
+          <td>Tauri + Next.js</td>
+          <td>本地优先 Markdown + AI 整理</td>
+          <td>local-first 理念、Markdown 导出、桌面端轻量方案</td>
+        </tr>
+        <tr>
+          <td><b>Moodiary</b><br><span class="small">ZhuJHua/moodiary</span></td>
+          <td class="star">2.0k</td>
+          <td>Flutter + Rust</td>
+          <td>国产全开源跨平台日记，中文生态最活跃</td>
+          <td>日记功能设计、素材管理、Rust 核心（性能敏感模块）</td>
+        </tr>
+        <tr>
+          <td><b>Inkwell</b><br><span class="small">Fenron-dev/inkwell</span></td>
+          <td class="small">新项目</td>
+          <td>Flutter</td>
+          <td>本地日记，Markdown + YAML，兼容 Obsidian</td>
+          <td><b>SQLite FTS5 全文检索</b>、500ms 防抖自动保存、日历热力图</td>
+        </tr>
+        <tr>
+          <td><b>ModuNote</b><br><span class="small">patelmilan03/ModuNote</span></td>
+          <td class="small">参考架构</td>
+          <td>Flutter（Riverpod + Drift + flutter_quill）+ FastAPI</td>
+          <td>模块化 AI 笔记</td>
+          <td>与本项目推荐栈几乎一致，是最佳架构参考样本</td>
+        </tr>
+        <tr>
+          <td><b>Jotsy / StoryPad</b><br><span class="small">CikeSeven / theachoem</span></td>
+          <td class="small">—</td>
+          <td>Flutter</td>
+          <td>免注册本地日记、时间轴流水式记录</td>
+          <td>「无文件夹、纯时间轴」交互、语音日记、Markdown 导出</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>2.2 商业产品对照</h3>
+    <table>
+      <thead><tr><th>产品</th><th>核心特点</th><th>局限 / 我们的机会</th></tr></thead>
+      <tbody>
+        <tr><td><b>Day One</b></td><td>多媒体日记标杆：照片/视频/音频/手绘，自动记录天气、位置、音乐，「那年今日」、地图视图、端到端加密、实体书印刷</td><td>订阅约 $34.99/年，生态封闭；其功能清单就是我们的产品天花板参照</td></tr>
+        <tr><td><b>格志日记</b></td><td>九宫格引导式提问模板、多主题日记本、习惯追踪</td><td>模板化引导值得借鉴；缺少学习管理与开放导出</td></tr>
+        <tr><td><b>Daylio</b></td><td>不用打字，点按即可完成心情打卡，统计强大</td><td>证明「低负担记录」刚需；我们用快捷按钮 + 语音降低门槛</td></tr>
+        <tr><td><b>Journey / Apple Journal</b></td><td>跨端同步 / 系统级零安装</td><td>Apple Journal 仅 iOS；Journey 云服务收费</td></tr>
+      </tbody>
+    </table>
+
+    <h3>2.3 调研结论与差异化切入点</h3>
+    <div class="card">
+      <ol>
+        <li><b>技术路线被验证：</b>头部同类项目（Immich、AppFlowy、Moodiary）均选择 Flutter，说明 Flutter 完全胜任「图文密集 + 多媒体 + 多端」场景，且可直接参考大量开源实现。</li>
+        <li><b>市场存在结构性空白：</b>纯笔记（Joplin/Obsidian）、纯相册（Immich）、纯日记（Day One/Moodiary）三者割裂，<b>「生活流 + 学习管理」融合型、且本地优先的产品稀缺</b>。</li>
+        <li><b>开放同步是差异化卖点：</b>Joplin 靠「WebDAV + E2EE、不绑定厂商云」获得 5.6 万 Star，验证了用户对数据自主权的付费意愿级别的重视。</li>
+        <li><b>学生群体被忽视：</b>学习待办、学习计时、复习卡片、学习打卡统计、可分享的学习卡片，是现有生活记录类 App 普遍缺失的模块。</li>
+      </ol>
+    </div>
+    <div class="tip">差异化公式：<b>Day One 的多媒体记录体验 + 格志的引导模板 + 学习模块（待办/计时/统计/分享卡）+ Joplin 的开放同步与数据自由，全部本地优先、开源免费。</b></div>
+  </section>
+
+  <!-- ============ 3 用户与场景 ============ -->
+  <section id="s3">
+    <h2><span class="no">03</span>用户画像与核心场景</h2>
+
+    <h3>3.1 目标用户</h3>
+    <div class="grid2">
+      <div class="card">
+        <h4>主要用户：在校大学生（核心）</h4>
+        <ul>
+          <li>白天课堂要记学习笔记、拍板书 PPT；</li>
+          <li>课余想记录生活、拍照、写日记、追踪心情；</li>
+          <li>有考试周打卡、番茄钟、待办清单需求；</li>
+          <li>预算敏感，反感广告和订阅，愿意为「好看 + 数据自己掌控」买单/传播。</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h4>次要用户</h4>
+        <ul>
+          <li>考研 / 考公备考人群：学习时长统计、每日复盘；</li>
+          <li>手账 / 摄影爱好者：图文排版、素材归档；</li>
+          <li>注重隐私的职场新人：工作琐事记录、本地加密。</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3>3.2 五大核心场景（用户故事）</h3>
+    <table>
+      <thead><tr><th style="width:110px;">场景</th><th>用户故事</th><th>关键能力</th></tr></thead>
+      <tbody>
+        <tr><td><b>日常拍照记录</b></td><td>路上看到好看的夕阳/吃到好吃的饭，打开 App 拍 1—3 张照片，加一句话和标签，10 秒完成归档</td><td>快捷拍照入口、多图、自动时间地点、标签</td></tr>
+        <tr><td><b>笔记记录</b></td><td>课堂上边听边记 Markdown 笔记，插入拍的板书，按「课程笔记本」归类，期末可全文搜索、导出 PDF</td><td>富文本/Markdown、笔记本层级、图片内嵌、FTS5 搜索、导出</td></tr>
+        <tr><td><b>学习分享</b></td><td>今天学了 4 小时高数，自动生成一张带学习时长、待办完成数、连续打卡天数的精美卡片，发朋友圈/小红书</td><td>学习计时、统计、长图卡片渲染、分享</td></tr>
+        <tr><td><b>生活琐事</b></td><td>快递取件码、临时要记的小事，用「速记」一键保存，事后可转成正式笔记或删除</td><td>速记箱、待办化、置顶</td></tr>
+        <tr><td><b>日记</b></td><td>晚上用引导模板（今天心情/三件小事/感恩）写日记，配几张图，查看「去年今日」</td><td>模板、心情表情、那年今日、日历视图、连续记录</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ============ 4 需求与功能 ============ -->
+  <section id="s4">
+    <h2><span class="no">04</span>需求分析与功能规划</h2>
+
+    <h3>4.1 需求优先级（MoSCoW）</h3>
+    <p>
+      <span class="pill must">Must 必须有</span>
+      <span class="pill should">Should 应该有</span>
+      <span class="pill could">Could 可以有</span>
+      <span class="pill wont">Won't 本期不做</span>
+    </p>
+    <table>
+      <thead><tr><th style="width:130px;">模块</th><th>功能点</th><th style="width:90px;">优先级</th></tr></thead>
+      <tbody>
+        <tr><td rowspan="4"><b>记录编辑</b></td><td>图文混排编辑器（文字 + 多图 + 分割线/引用/清单）</td><td><span class="pill must">M</span></td></tr>
+        <tr><td>拍照 / 系统相册选图，图片自动压缩 + 缩略图</td><td><span class="pill must">M</span></td></tr>
+        <tr><td>自动保存（防抖 500ms）、草稿箱、回收站</td><td><span class="pill must">M</span></td></tr>
+        <tr><td>语音转文字、手绘涂鸦</td><td><span class="pill could">C</span></td></tr>
+        <tr><td rowspan="3"><b>时间轴/相册</b></td><td>按日/月聚合的图文时间轴流</td><td><span class="pill must">M</span></td></tr>
+        <tr><td>相册网格视图、按标签/地点/笔记本筛选</td><td><span class="pill should">S</span></td></tr>
+        <tr><td>地图相册、CLIP 语义搜图（自然语言找图）</td><td><span class="pill wont">W</span></td></tr>
+        <tr><td rowspan="3"><b>笔记本/分类</b></td><td>「生活」「学习」双空间 + 自定义笔记本、多级标签</td><td><span class="pill must">M</span></td></tr>
+        <tr><td>条目置顶、收藏、多选批量操作</td><td><span class="pill should">S</span></td></tr>
+        <tr><td>双向链接、知识图谱</td><td><span class="pill wont">W</span></td></tr>
+        <tr><td rowspan="3"><b>日记</b></td><td>心情打卡、九宫格/问答模板、日历视图、连续打卡</td><td><span class="pill should">S</span></td></tr>
+        <tr><td>「那年今日」回顾提醒</td><td><span class="pill should">S</span></td></tr>
+        <tr><td>天气/位置自动元数据</td><td><span class="pill could">C</span></td></tr>
+        <tr><td rowspan="3"><b>学习管理</b></td><td>待办清单（关联笔记）、番茄钟/学习计时器</td><td><span class="pill should">S</span></td></tr>
+        <tr><td>学习时长统计（日/周/月柱状、热力图）</td><td><span class="pill should">S</span></td></tr>
+        <tr><td>复习卡片（间隔重复）</td><td><span class="pill could">C</span></td></tr>
+        <tr><td rowspan="2"><b>检索</b></td><td>SQLite FTS5 全文搜索 + 标签/时间/类型过滤</td><td><span class="pill must">M</span></td></tr>
+        <tr><td>搜索历史与高亮</td><td><span class="pill could">C</span></td></tr>
+        <tr><td rowspan="3"><b>同步/备份/隐私</b></td><td>本地自动备份（数据库 + 媒体打包）、导出 Markdown/PDF/长图</td><td><span class="pill must">M</span></td></tr>
+        <tr><td>WebDAV 同步（坚果云/Nextcloud/NAS）、应用锁</td><td><span class="pill should">S</span></td></tr>
+        <tr><td>同步前 AES-GCM 端到端加密</td><td><span class="pill could">C</span></td></tr>
+        <tr><td rowspan="2"><b>分享</b></td><td>学习打卡卡片、日记长图（多模板）</td><td><span class="pill should">S</span></td></tr>
+        <tr><td>社区发布 / 好友动态</td><td><span class="pill wont">W</span></td></tr>
+      </tbody>
+    </table>
+
+    <h3>4.2 MVP 范围界定（第 5 周末必须达到）</h3>
+    <div class="mvp-box">
+      <div class="mvp-in">
+        <h4>✓ MVP 内（最小可日常使用）</h4>
+        <ul>
+          <li>图文记录的增删改查 + 草稿自动保存；</li>
+          <li>拍照/选图、压缩、缩略图、时间轴展示；</li>
+          <li>笔记本分类 + 标签 + 全文搜索；</li>
+          <li>本地数据库稳定、本地备份与 Markdown 导出；</li>
+          <li>Android APK 可真机安装运行。</li>
+        </ul>
+      </div>
+      <div class="mvp-out">
+        <h4>○ MVP 后迭代（避免首版范围爆炸）</h4>
+        <ul>
+          <li>日记模板、心情与那年今日；</li>
+          <li>学习待办、计时器与统计；</li>
+          <li>WebDAV 同步、加密、应用锁；</li>
+          <li>分享长图、主题美化、桌面端。</li>
+        </ul>
+      </div>
+    </div>
+    <div class="note">独立开发最大的风险不是技术，而是「什么都想做」。严格按上表冻结 MVP：MVP 之前任何新点子只进「灵感清单」文档，不插开发队列。</div>
+  </section>
+
+  <!-- ============ 5 产品设计 ============ -->
+  <section id="s5">
+    <h2><span class="no">05</span>产品设计与信息架构</h2>
+
+    <h3>5.1 信息架构（底部 5 Tab）</h3>
+    <pre class="tree">拾光札记
+├── ① 时间轴（首页）        —— 全部记录按日期聚合的图文流；顶部周历/心情条；悬浮「+」
+│   ├── 记录详情 / 编辑器
+│   └── 筛选：类型 · 笔记本 · 标签 · 月份
+├── ② 相册                  —— 纯图片网格（月分组）、大图浏览、图片对应条目跳转
+├── ③ 学习                  —— 待办 · 番茄钟 · 学习统计图表 · 复习卡片
+├── ④ 笔记本                —— 生活空间 / 学习空间 / 自定义笔记本 + 标签管理
+└── ⑤ 我的                  —— 备份与同步(WebDAV) · 导出 · 应用锁 · 主题 · 关于
+    └── 速记箱（全局下拉/快捷磁贴进入，收纳琐事）</pre>
+
+    <h3>5.2 关键页面清单</h3>
+    <table>
+      <thead><tr><th>页面</th><th>核心元素</th><th>设计要点</th></tr></thead>
+      <tbody>
+        <tr><td>时间轴首页</td><td>日期锚点、图文卡片、心情色点、悬浮加号</td><td>图片瀑布/等宽网格自适应；一屏内可回看 3—5 天</td></tr>
+        <tr><td>编辑器页</td><td>标题、富文本区、工具栏（图/清单/标签/心情/位置）</td><td>工具栏单手可达；自动保存状态常驻轻提示</td></tr>
+        <tr><td>相册页</td><td>月份头、正方形缩略图网格、多选模式</td><td>缩略图用本地缓存，列表滚动保持 60fps</td></tr>
+        <tr><td>学习页</td><td>今日待办、计时圆环、本周柱状图、热力图</td><td>计时器可后台运行 + 通知栏控制</td></tr>
+        <tr><td>统计页</td><td>记录条数曲线、连续天数、标签分布</td><td>用 fl_chart 实现，离线渲染</td></tr>
+      </tbody>
+    </table>
+
+    <h3>5.3 设计原则</h3>
+    <ul>
+      <li><b>3 秒可达：</b>任何主界面到「开始记录」不超过 1 次点击（桌面快捷方式直达编辑器）；</li>
+      <li><b>浅色温暖质感：</b>米白纸张背景 + 低饱和青绿主色，圆角卡片，避免工具类 App 的冷硬感；</li>
+      <li><b>无干扰写作：</b>编辑器默认隐藏状态栏外一切元素；</li>
+      <li><b>可访问性：</b>正文不小于 14sp、触控目标不小于 44×44dp、支持系统字体缩放；</li>
+      <li><b>先纸原型后 UI：</b>用纸笔 / Figma 画完 5 个主页面线框并自己走查 3 遍再写代码。</li>
+    </ul>
+  </section>
+
+  <!-- ============ 6 技术选型 ============ -->
+  <section id="s6">
+    <h2><span class="no">06</span>技术选型方案</h2>
+
+    <h3>6.1 客户端路线对比与决策</h3>
+    <p>结合调研数据、独立开发人力与「Android 优先、未来上桌面/iOS」的目标，对四条候选路线打分（5 分制，为基于公开资料的工程评估，非统计数据）：</p>
+    <table>
+      <thead><tr><th>维度</th><th>Flutter（推荐）</th><th>React Native</th><th>Kotlin + Compose 原生</th><th>微信小程序</th></tr></thead>
+      <tbody>
+        <tr><td>跨平台覆盖</td><td>5（移动+桌面+Web）</td><td>4.5（移动为主）</td><td>2（Android 最佳，其余弱）</td><td>2（仅限微信生态）</td></tr>
+        <tr><td>性能/流畅度</td><td>4.5（自绘引擎）</td><td>3（桥接开销）</td><td>5</td><td>2.5</td></tr>
+        <tr><td>图文/多媒体 UI 效率</td><td>5</td><td>3.5</td><td>4</td><td>3.5</td></tr>
+        <tr><td>同类开源项目验证</td><td>5（Immich/AppFlowy/Moodiary）</td><td>3.5（Joplin）</td><td>3</td><td>1（无同类重应用）</td></tr>
+        <tr><td>本地能力（DB/文件/加密）</td><td>4.5</td><td>4</td><td>5</td><td>2（存储与相册受限）</td></tr>
+        <tr><td>你的学习成本</td><td>3.5（新学 Dart，但语法简单）</td><td>3（需 JS/React）</td><td>4（有 Java/Android 基础）</td><td>4.5（已学过）</td></tr>
+        <tr><td><b>综合结论</b></td><td><b>首选</b></td><td>次选</td><td>保守备选</td><td>不适合</td></tr>
+      </tbody>
+    </table>
+    <div class="tip">
+      <b>决策：Flutter 3.x + Dart 3。</b>理由：① 同类最成功项目全部采用，可直接读源码学习；② 一套代码覆盖 Android 手机和 Windows 桌面（你日常调试零成本）；③ Dart 语法接近 Java/JS，对有编程基础者约 1 周可上手；④ 图文密集 UI 正是 Flutter 最强项。<br>
+      <b>保守备选：</b>若你希望完全复用已学的 Android 知识、且确定只做 Android，可用 Kotlin + Jetpack Compose + Room 实现等价架构，路线图不变。
+    </div>
+
+    <h3>6.2 推荐技术栈（Flutter 方案）</h3>
+    <table>
+      <thead><tr><th style="width:120px;">层次</th><th>选型</th><th>选型理由</th></tr></thead>
+      <tbody>
+        <tr><td>框架/语言</td><td>Flutter 3.x / Dart 3</td><td>跨端、自绘 UI、热重载开发效率高</td></tr>
+        <tr><td>架构模式</td><td>MVVM + Repository（Clean Architecture 轻量版）</td><td>UI / 业务 / 数据解耦，便于测试与替换数据源</td></tr>
+        <tr><td>状态管理</td><td>flutter_riverpod 2.x（+ code generation）</td><td>编译期安全、可测试，当前社区主流选择</td></tr>
+        <tr><td>路由</td><td>go_router</td><td>声明式、支持深链接与底部 Tab</td></tr>
+        <tr><td>本地数据库</td><td><b>Drift（SQLite 封装）</b>，开启 FTS5 全文检索</td><td>类型安全、响应式查询、迁移机制完善；Inkwell/ModuNote 同款方案</td></tr>
+        <tr><td>KV/密钥存储</td><td>shared_preferences + flutter_secure_storage</td><td>设置项与加密密钥分离存放</td></tr>
+        <tr><td>富文本编辑</td><td>flutter_quill（Delta JSON 格式）</td><td>AppFlowy 系生态、可嵌入图片、可导出 Markdown/HTML</td></tr>
+        <tr><td>图片处理</td><td>image（压缩/裁剪）、photo_manager（读取系统相册）、flutter_exif_editor</td><td>原图入应用私有目录，统一生成缩略图</td></tr>
+        <tr><td>相机/选图</td><td>camera / image_picker</td><td>官方维护，权限模型清晰</td></tr>
+        <tr><td>图表</td><td>fl_chart</td><td>纯 Flutter 渲染学习统计图表</td></tr>
+        <tr><td>同步</td><td>dio 实现 WebDAV（PROPFIND/PUT/GET/DELETE）</td><td>兼容坚果云、Nextcloud、群晖 NAS；不绑定厂商</td></tr>
+        <tr><td>加密</td><td>cryptography（AES-GCM）</td><td>同步包与本地库加密，密钥派生 PBKDF2</td></tr>
+        <tr><td>导出</td><td>pdf（PDF）、RepaintBoundary + image（长图）、markdown 序列化</td><td>学习分享卡片与笔记导出</td></tr>
+        <tr><td>后台/通知</td><td>flutter_background_service、flutter_local_notifications</td><td>学习计时后台运行、日记提醒、那年今日</td></tr>
+        <tr><td>国际化</td><td>flutter_localizations + intl</td><td>先中文，预留英文</td></tr>
+        <tr><td>工程化</td><td>melos（可选）、build_runner、flutter_lints、freezed</td><td>代码生成与统一规范</td></tr>
+      </tbody>
+    </table>
+
+    <h3>6.3 本地存储策略（关键设计）</h3>
+    <div class="card">
+      <ul>
+        <li><b>结构化数据 → SQLite（Drift）：</b>文本、标签、时间、路径等元数据入库，支持事务、迁移与 FTS5；</li>
+        <li><b>媒体文件 → 文件系统：</b>原图存 <code>app_docs/media/yyyy/mm/uuid.jpg</code>，同步生成 <code>thumb/</code>（长边 400px，质量 80）与 <code>medium/</code>（长边 1600px）两级压缩图，数据库只存相对路径；</li>
+        <li><b>写入流程：</b>编辑器先写临时草稿 → 防抖 500ms 事务入库 → 图片转码走 Isolate 后台线程，避免 UI 卡顿；</li>
+        <li><b>容量控制：</b>设置中提供「仅保留压缩图」开关；单条记录删除后媒体进入回收站，30 天清理；</li>
+        <li><b>备份包：</b>导出为单个 <code>.mlbk</code>（zip：db + media + manifest.json 版本清单），可整体恢复。</li>
+      </ul>
+    </div>
+
+    <h3>6.4 同步方案演进（不要一上来做复杂）</h3>
+    <table>
+      <thead><tr><th>阶段</th><th>方案</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td>V1（MVP）</td><td>手动/定时本地备份包</td><td>零冲突风险，先保证数据不丢</td></tr>
+        <tr><td>V2</td><td>WebDAV 单向备份（上传/恢复）</td><td>对接坚果云免费额度即可验证链路</td></tr>
+        <tr><td>V3</td><td>WebDAV 双向同步：每条数据带 <code>uuid + updated_at + version + deleted</code> 软删除标记，「最后写入获胜（LWW）」合并</td><td>单用户多设备足够，避免 CRDT 复杂度</td></tr>
+        <tr><td>V4（可选）</td><td>同步前 AES-GCM 端到端加密，服务端只存密文</td><td>对齐 Joplin 隐私模型</td></tr>
+      </tbody>
+    </table>
+    <div class="note">多端同时编辑的冲突处理是本项目最难的工程点。第一版只做「备份/恢复」，双向同步放到第 13 周以后，且先用 LWW，绝不提前引入 CRDT。</div>
+
+    <h3>6.5 工程目录结构（Feature-First）</h3>
+<pre>memoleaf/
+├── lib/
+│   ├── main.dart
+│   ├── app/                    <span class="c">// 应用入口、主题、路由</span>
+│   ├── core/                   <span class="c">// 通用：数据库、文件、同步、加密、工具、常量</span>
+│   │   ├── db/                 <span class="c">// Drift: tables / dao / database.g.dart</span>
+│   │   ├── storage/            <span class="c">// 媒体文件、备份包</span>
+│   │   ├── sync/               <span class="c">// WebDAV client、合并策略</span>
+│   │   └── security/           <span class="c">// 应用锁、加解密</span>
+│   ├── features/               <span class="c">// 按功能模块划分</span>
+│   │   ├── timeline/           <span class="c">// 时间轴</span>
+│   │   ├── editor/             <span class="c">// 记录编辑器</span>
+│   │   ├── gallery/            <span class="c">// 相册</span>
+│   │   ├── notebooks/          <span class="c">// 笔记本/标签</span>
+│   │   ├── diary/              <span class="c">// 日记、心情、模板</span>
+│   │   ├── study/              <span class="c">// 待办、计时、统计</span>
+│   │   ├── search/             <span class="c">// FTS5 搜索</span>
+│   │   ├── share/              <span class="c">// 长图/卡片导出</span>
+│   │   └── settings/
+│   │       └── &lt;feature&gt;/data · domain · presentation  <span class="c">// 模块内三层</span>
+│   └── shared/                 <span class="c">// 共享 widget、扩展方法</span>
+├── assets/                     <span class="c">// 图标、字体、模板、空态插画</span>
+├── test/                       <span class="c">// 单元/widget 测试，镜像 lib 结构</span>
+├── pubspec.yaml
+└── README.md</pre>
+  </section>
+
+  <!-- ============ 7 架构与数据模型 ============ -->
+  <section id="s7">
+    <h2><span class="no">07</span>系统架构与数据模型</h2>
+
+    <h3>7.1 分层架构</h3>
+    <p>采用轻量 Clean Architecture：表现层只依赖 Provider，业务逻辑在 Repository 之后，数据源可在「本地 Drift / WebDAV 远端」之间替换而不动 UI。（配套的分层架构示意图见对话中的独立可视化。）</p>
+    <div class="card">
+      <ol>
+        <li><b>Presentation（表现层）：</b>Page + Widget + Riverpod Notifier/Provider，负责渲染与交互；</li>
+        <li><b>Domain（领域层）：</b>实体模型（Entry / Asset / Notebook…）、仓库抽象接口、用例；</li>
+        <li><b>Data（数据层）：</b>Repository 实现 + Drift DAO + 文件存储 + WebDAV 数据源，负责模型与表结构映射；</li>
+        <li><b>Core（基础服务）：</b>数据库单例、图片管线、加密、备份、通知、权限等横切能力。</li>
+      </ol>
+    </div>
+
+    <h3>7.2 核心数据表设计（Drift / SQLite）</h3>
+<pre><span class="c">-- 笔记本（生活/学习空间与自定义本）</span>
+notebooks(id, uuid, name, space,            <span class="c">-- space: life | study | custom</span>
+          cover_color, sort_index, created_at, updated_at, deleted)
+
+<span class="c">-- 记录主表（统一承载日记/笔记/速记/待办）</span>
+entries(id, uuid, notebook_id, type,        <span class="c">-- type: note|diary|quick|todo</span>
+        title, content_delta,               <span class="c">-- flutter_quill Delta JSON</span>
+        mood, weather_json, location_json,
+        status, pinned,                     <span class="c">-- status: draft|normal|archived</span>
+        entry_date, created_at, updated_at, version, deleted)
+
+<span class="c">-- 媒体资产（图片/音频，文件存文件系统）</span>
+assets(id, uuid, entry_id, kind,            <span class="c">-- kind: image|audio</span>
+        rel_path, thumb_path, medium_path,
+        width, height, size_bytes, duration_ms,
+        exif_json, hash_sha1, sort_index)
+
+tags(id, uuid, name, color, created_at)
+entry_tags(entry_id, tag_id)                <span class="c">-- 多对多</span>
+
+<span class="c">-- 学习模块</span>
+todos(id, uuid, entry_id, content, done, due_date, priority, updated_at)
+study_sessions(id, uuid, subject, started_at, ended_at, duration_sec, note)
+
+<span class="c">-- 全文检索虚拟表（FTS5，内容镜像 entries）</span>
+entries_fts(entry_id UNINDEXED, title, content_text)
+
+<span class="c">-- 同步元数据 / 设置</span>
+sync_meta(key, value)
+settings_kv(key, value)</pre>
+    <div class="tip">所有需要同步的业务表统一带 <code>uuid / created_at / updated_at / version / deleted</code> 五个字段 —— 这是 V3 双向同步能够后补上去而不重构的前提，第一版建表时就要留好。</div>
+
+    <h3>7.3 关键数据流：发布一条图文记录</h3>
+<pre>编辑器页
+  ├─ 选图/拍照 → 图片管线(Isolate)：转码 → 生成 thumb/medium → 写入私有目录
+  ├─ 500ms 防抖 → EntryNotifier 校验
+  └─ EntryRepository.saveEntry()
+        ├─ Drift 事务：写 entries + assets + entry_tags + 更新 entries_fts
+        ├─ 标记「待同步」队列 sync_queue
+        └─ 返回 Stream → 时间轴/相册/统计页响应式自动刷新
+（同步开关开启时）SyncWorker 消费队列 → 打包 → 可选加密 → WebDAV PUT</pre>
+  </section>
+
+  <!-- ============ 8 路线图 ============ -->
+  <section id="s8">
+    <h2><span class="no">08</span>16 周开发路线图</h2>
+    <p>按在校学生课余每周约 12—15 小时估算，每阶段结束都必须产出「可真机演示」的版本。日期以 2026-09-03 启动、第 1 周从 9 月 7 日（周一）起算。</p>
+
+    <div class="phase">
+      <div class="week"><b>第 1 周</b><span>9/7–9/13</span><span>准备</span></div>
+      <div class="body">
+        <h4>阶段 0 · 立项与环境</h4>
+        <ul>
+          <li>冻结需求与 MVP 范围；纸笔/Figma 完成 5 个主页面线框图；</li>
+          <li>安装 Flutter SDK、Android Studio、配置真机调试；Dart 语法速通（对应第 12 章资源）；</li>
+          <li>GitHub 建仓（main/dev 分支 + Issue 看板）、确定 README 与提交规范；</li>
+          <li><b>交付：</b>能在手机上跑起 Hello World 空壳工程 + 5 页底部 Tab 空框架。</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="week"><b>第 2–5 周</b><span>9/14–10/11</span><span>MVP</span></div>
+      <div class="body">
+        <h4>阶段 1 · 记录内核（MVP）</h4>
+        <ul>
+          <li>W2：Drift 建表、Repository 层、Riverpod 接入、时间轴静态 UI；</li>
+          <li>W3：flutter_quill 编辑器接入、增删改查、500ms 自动保存与草稿；</li>
+          <li>W4：image_picker/camera 选图拍照、图片管线（压缩/缩略图/私有目录）、图文混排；</li>
+          <li>W5：笔记本/标签、FTS5 搜索、本地备份包导出、真机走查与缺陷修复；</li>
+          <li><b>里程碑 M1（10/11）：</b>MVP 可用，自己每天真实使用，打 <code>v0.1.0-alpha</code> 标签。</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="week"><b>第 6–9 周</b><span>10/12–11/8</span><span>相册+分类</span></div>
+      <div class="body">
+        <h4>阶段 2 · 相册与组织能力</h4>
+        <ul>
+          <li>W6：相册网格页、大图浏览、多选批量操作、滚动性能优化（缓存/分帧加载）；</li>
+          <li>W7：时间轴月分组、筛选器（类型/笔记本/标签/月份）、置顶收藏、回收站；</li>
+          <li>W8：EXIF 读取、地点记录、记录详情页排版打磨、空态/引导页；</li>
+          <li>W9：主题系统（明暗/配色）、全局设置、数据导入（从 Markdown 文件夹）；</li>
+          <li><b>里程碑 M2：</b><code>v0.2.0</code>，邀请 3—5 位同学试用并收集问题。</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="week"><b>第 10–12 周</b><span>11/9–11/29</span><span>日记+学习</span></div>
+      <div class="body">
+        <h4>阶段 3 · 日记与学习双模块（差异化核心）</h4>
+        <ul>
+          <li>W10：日记模板系统（九宫格问答/自由书写）、心情打卡、日历视图与连续天数；</li>
+          <li>W11：待办清单、番茄钟/学习计时器（后台服务 + 通知栏）、速记箱；</li>
+          <li>W12：fl_chart 学习统计（周/月柱状、热力图）、「那年今日」回顾与本地通知；</li>
+          <li><b>里程碑 M3：</b><code>v0.3.0</code>，形成区别于普通日记 App 的完整功能闭环。</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="week"><b>第 13–15 周</b><span>11/30–12/20</span><span>同步+分享</span></div>
+      <div class="body">
+        <h4>阶段 4 · 同步、安全与分享</h4>
+        <ul>
+          <li>W13：WebDAV 客户端（先用坚果云测试上传/恢复）、同步队列与冲突合并（LWW）；</li>
+          <li>W14：AES-GCM 加密选项、应用锁（生物识别/密码）、Markdown/PDF 导出；</li>
+          <li>W15：学习打卡卡片与日记长图模板、系统分享面板；</li>
+          <li><b>里程碑 M4：</b><code>v0.4.0-beta</code>，多设备（手机+Windows 桌面）同步实测。</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="week"><b>第 16 周</b><span>12/21–12/27</span><span>发布</span></div>
+      <div class="body">
+        <h4>阶段 5 · 打磨与发布</h4>
+        <ul>
+          <li>真机矩阵测试（至少 3 款不同 Android 版本机型）、内存与存储占用优化；</li>
+          <li>应用图标、启动页、截图、README、功能演示 GIF；隐私政策与开源协议（建议 AGPL-3.0 对齐 Moodiary/Immich）；</li>
+          <li>GitHub Release 发布 APK、Windows 安装包；投递酷安/学校社区/掘金/少数派；</li>
+          <li><b>里程碑 M5：</b><code>v1.0.0</code> 正式发布，同步沉淀答辩/简历材料。</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="note">路线图预留了弹性：每阶段约留 20% 缓冲。若期中/期末周冲突，优先保证 M1/M5，阶段 3—4 的 Could 级功能可整体后移，不延期正式版。</div>
+  </section>
+
+  <!-- ============ 9 质量保障 ============ -->
+  <section id="s9">
+    <h2><span class="no">09</span>质量保障与工程规范</h2>
+    <div class="grid2">
+      <div class="card">
+        <h4>测试策略</h4>
+        <ul>
+          <li><b>单元测试：</b>Repository、同步合并（LWW）、图片管线、统计计算，核心逻辑覆盖率目标 70%；</li>
+          <li><b>Widget 测试：</b>编辑器自动保存、时间轴渲染；</li>
+          <li><b>集成测试：</b>「建记录→搜得到→备份→恢复」主链路；</li>
+          <li><b>手工真机清单：</b>权限拒绝、断网、低存储、进程被杀、暗黑模式、字体放大。</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h4>Git 与协作规范（单人也按团队标准）</h4>
+        <ul>
+          <li>分支：<code>main</code>（可发布）/ <code>dev</code>（集成）/ <code>feat/xxx</code>（功能）；</li>
+          <li>提交信息 Conventional Commits：<code>feat:</code> / <code>fix:</code> / <code>refactor:</code> / <code>docs:</code>；</li>
+          <li>每个功能对应一个 GitHub Issue，PR 描述关联 Issue；</li>
+          <li>每个里程碑打 tag，Release 写变更日志（CHANGELOG）。</li>
+        </ul>
+      </div>
+    </div>
+    <div class="card">
+      <h4>数据安全红线</h4>
+      <ul>
+        <li>任何写库操作走事务；删除一律软删除 + 回收站，不直接物理删除；</li>
+        <li>每次版本数据库结构变更必须写 Drift Migration，禁止开发期「卸载重装」式偷懒；</li>
+        <li>升级前自动生成本地备份；备份恢复流程在每个里程碑手动验证一次；</li>
+        <li>权限最小化：定位、相机、相册权限按需申请并解释用途，不提前索权。</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ============ 10 风险 ============ -->
+  <section id="s10">
+    <h2><span class="no">10</span>风险识别与对策</h2>
+    <table>
+      <thead><tr><th style="width:150px;">风险</th><th>表现</th><th>对策</th></tr></thead>
+      <tbody>
+        <tr><td>范围蔓延</td><td>越做越多，永远发不了版</td><td>MoSCoW 冻结 MVP；新想法只进灵感清单；每阶段只做既定内容</td></tr>
+        <tr><td>Flutter 学习曲线</td><td>异步、状态管理、代码生成初期易卡住</td><td>第 1 周集中扫盲；先照官方 codelab 做 demo 再迁移到项目；卡住 2 小时换查官方文档/源码而非硬磨</td></tr>
+        <tr><td>图片存储膨胀</td><td>几个 G 占用、列表卡顿</td><td>两级压缩 + 缩略图；Isolate 转码；分页查询；提供存储清理页</td></tr>
+        <tr><td>同步冲突/数据覆盖</td><td>多端同步丢数据</td><td>先备份恢复、再 LWW 双向；全量软删除 + version；同步前自动快照</td></tr>
+        <tr><td>数据丢失（最致命）</td><td>卸载/崩溃/迁移失败</td><td>自动本地备份 + 回收站 + 导出不锁定；每个里程碑演练恢复</td></tr>
+        <tr><td>学业冲突断更</td><td>考试周中断后难以捡回</td><td>双周可演示版本保持正反馈；任务拆到 ≤2 小时粒度；断更后从 Issue 看板快速恢复上下文</td></tr>
+        <tr><td>独立开发倦怠</td><td>长期无反馈</td><td>第 9 周即找种子用户；GitHub 开源获取外部反馈；把大目标换成「每周一个可见变化」</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ============ 11 远期 ============ -->
+  <section id="s11">
+    <h2><span class="no">11</span>远期规划（V2+，学习分享社区）</h2>
+    <p>「学习分享」第一版用「导出卡片」满足传播需求；若要做真正的社区/多端云同步，再引入后端，且保持本地优先内核不变：</p>
+    <table>
+      <thead><tr><th>阶段</th><th>能力</th><th>技术选项</th></tr></thead>
+      <tbody>
+        <tr><td>V2.0</td><td>账号体系、云端多端同步、学习分享流（可选匿名）</td><td>快速路线：Supabase（Auth + Postgres + Storage）；自研路线：Spring Boot / FastAPI + PostgreSQL + MinIO 对象存储（可复用 Java Web 所学）</td></tr>
+        <tr><td>V2.1</td><td>AI 能力：自动打标签、周报生成、拍照板书 OCR</td><td>端侧 TFLite（隐私优先）或后端大模型 API，参考 Moodiary 的 Rust 核心 + TFLite 方案</td></tr>
+        <tr><td>V2.2</td><td>语义搜图、复习卡片间隔重复、小组学习打卡</td><td>CLIP/embedding + pgvector；SM-2 算法</td></tr>
+      </tbody>
+    </table>
+    <div class="tip">后端社区功能是「验证完单机价值之后」的事。单机版没有 100 个真实用户之前，不写一行服务端代码。</div>
+  </section>
+
+  <!-- ============ 12 起步清单 ============ -->
+  <section id="s12">
+    <h2><span class="no">12</span>零基础起步清单与学习资源</h2>
+
+    <h3>12.1 第 1 周逐日清单</h3>
+    <table>
+      <thead><tr><th style="width:80px;">天</th><th>任务</th><th style="width:200px;">完成标志</th></tr></thead>
+      <tbody>
+        <tr><td>Day 1</td><td>安装 Flutter SDK（推荐用 fvm 管理版本）、Android Studio，跑 <code>flutter doctor</code> 全绿</td><td>浏览器/模拟器跑起计数器 demo</td></tr>
+        <tr><td>Day 2</td><td>Dart 语法速通：空安全、async/await、类与 mixin、泛型</td><td>能独立写 20 个 Dart 小练习</td></tr>
+        <tr><td>Day 3</td><td>Widget 基础：Stateless/Stateful、布局（Row/Column/Stack/ListView）</td><td>手写一个静态时间轴页面</td></tr>
+        <tr><td>Day 4</td><td>状态管理入门 Riverpod + 路由 go_router</td><td>5 Tab 框架可切换</td></tr>
+        <tr><td>Day 5</td><td>Drift 官方示例跑通：建表、DAO、Stream 查询</td><td>demo 里能增删查一条记录</td></tr>
+        <tr><td>Day 6</td><td>画 5 个主页面线框图、建 GitHub 仓库与 Issue 模板</td><td>线框走查 3 遍、仓库初始化完成</td></tr>
+        <tr><td>Day 7</td><td>复盘 + 把空壳工程提交、写下第 1 周开发日志</td><td>真机安装空壳 App</td></tr>
+      </tbody>
+    </table>
+
+    <h3>12.2 推荐学习资源（免费优先）</h3>
+    <ul>
+      <li><b>官方一手：</b>Flutter 官方文档与 codelabs（flutter.dev/learn）、Dart 语言 tour；Drift、Riverpod、flutter_quill 的 pub.dev README 与 example 目录；</li>
+      <li><b>源码学习（最直接）：</b>克隆 Moodiary（中文注释友好、Flutter+Rust 日记）、ModuNote（Riverpod+Drift+Quill 架构样板）、AppFlowy（大型工程组织）；</li>
+      <li><b>系统课程：</b>Flutter 官方 YouTube 频道、国内「闲鱼技术」Flutter 系列文章；</li>
+      <li><b>工具书：</b>《Flutter 实战·第二版》（线上免费）；</li>
+      <li><b>提问渠道：</b>Stack Overflow、Flutter 中文社区、GitHub Issues（先搜后问，附最小复现）。</li>
+    </ul>
+
+    <h3>12.3 立即可做的下一步（今天）</h3>
+    <div class="card">
+      <ol>
+        <li>确定项目最终名称与包名（如 <code>com.yourname.memoleaf</code>）；</li>
+        <li>按第 4 章把 MVP 功能抄成 GitHub Issue 清单并估时；</li>
+        <li>完成 Day 1 环境安装，跑通第一个 demo；</li>
+        <li>之后严格按 16 周路线图推进，每周在 README 更新进度徽章与开发日志。</li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ============ 13 附录 ============ -->
+  <section id="s13">
+    <h2><span class="no">13</span>附录：资料来源</h2>
+    <ul style="font-size:13px;color:var(--ink-2);">
+      <li>GitHub 仓库 Star / 技术栈数据：2026-09-03 通过 GitHub 官方仓库搜索接口实测，涉及 immich-app/immich、AppFlowy-IO/AppFlowy、laurent22/joplin、codexu/note-gen、ZhuJHua/moodiary、Fenron-dev/inkwell、patelmilan03/ModuNote、theachoem/storypad、CikeSeven/jotsy 等；</li>
+      <li>商业产品功能与定价：Day One / Grid Diary / Daylio / Journey 官方站点与 2026 年公开对比评测（Holstee、Mindspace、Reflection 等）；</li>
+      <li>本地数据库选型：Drift / Isar / Hive / sqflite 公开基准对比（GeekyAnts、Quash 2025、掘金/CSDN 技术文章）；</li>
+      <li>跨平台框架对比：Flutter / React Native / Kotlin Multiplatform / Compose 2025—2026 公开技术对比（SegmentFault、腾讯云开发者社区、DEV.to、Kanopy Labs）；</li>
+      <li>同步与加密：Joplin WebDAV + E2EE 官方文档与 NAS 同步实践资料。</li>
+    </ul>
+    <div class="footer">
+      拾光札记（MemoLeaf）项目计划书 v1.0 · 编制于 2026-09-03 · 本文档可随需求迭代更新，版本变更记录于 CHANGELOG
+    </div>
+  </section>
+
+</div>
+</body>
+</html>
