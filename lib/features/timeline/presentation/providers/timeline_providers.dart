@@ -14,3 +14,13 @@ final timelineRepositoryProvider = Provider<TimelineRepository>((ref) {
 final timelineStreamProvider = StreamProvider<List<TimelineEntry>>((ref) {
   return ref.watch(timelineRepositoryProvider).watchTimeline();
 });
+
+/// 草稿箱流（W3）
+final draftsStreamProvider = StreamProvider<List<TimelineEntry>>((ref) {
+  return ref.watch(timelineRepositoryProvider).watchDrafts();
+});
+
+/// 回收站流（W3）
+final trashStreamProvider = StreamProvider<List<TimelineEntry>>((ref) {
+  return ref.watch(timelineRepositoryProvider).watchTrash();
+});

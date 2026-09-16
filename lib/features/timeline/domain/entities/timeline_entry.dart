@@ -13,6 +13,20 @@ enum EntryType {
       values.firstWhere((t) => t.name == name, orElse: () => EntryType.note);
 }
 
+/// 记录状态（与 entries.status 字符串互转）
+enum EntryStatus {
+  draft('草稿'),
+  normal('已发布'),
+  archived('已归档');
+
+  const EntryStatus(this.label);
+
+  final String label;
+
+  static EntryStatus fromName(String name) =>
+      values.firstWhere((s) => s.name == name, orElse: () => EntryStatus.normal);
+}
+
 /// 时间轴领域实体（纯 Dart，不依赖 Drift / Flutter）
 class TimelineEntry {
   const TimelineEntry({
@@ -21,6 +35,7 @@ class TimelineEntry {
     required this.title,
     required this.plainText,
     required this.type,
+    required this.status,
     required this.pinned,
     required this.entryDate,
     this.mood,
@@ -35,6 +50,7 @@ class TimelineEntry {
   final String title;
   final String plainText;
   final EntryType type;
+  final EntryStatus status;
   final bool pinned;
   final DateTime entryDate;
 
@@ -48,12 +64,13 @@ class TimelineEntry {
   final String? firstAssetRelPath;
 }
 
-/// 新建记录草稿（[TimelineRepository.saveEntry] 的入参）
+/// 新建/更新记录草稿（TimelineRepository.saveEntry / updateEntry 的入参）
 class EntryDraft {
   const EntryDraft({
     required this.title,
     required this.plainText,
     this.type = EntryType.note,
+    this.status = EntryStatus.normal,
     this.mood,
     this.notebookId,
     this.entryDate,
@@ -63,10 +80,11 @@ class EntryDraft {
   final String title;
   final String plainText;
   final EntryType type;
+  final EntryStatus status;
   final int? mood;
   final int? notebookId;
   final DateTime? entryDate;
 
-  /// flutter_quill Delta JSON（W3 编辑器接入；当前为空串）
+  /// flutter_quill Delta JSON
   final String contentDelta;
 }
