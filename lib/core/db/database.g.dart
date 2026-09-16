@@ -5310,6 +5310,7 @@ abstract class _$PlainLeafDatabase extends GeneratedDatabase {
   late final NotebooksDao notebooksDao = NotebooksDao(
     this as PlainLeafDatabase,
   );
+  late final AssetsDao assetsDao = AssetsDao(this as PlainLeafDatabase);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();

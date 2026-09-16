@@ -1,6 +1,7 @@
 import 'package:drift/drift.dart';
 
 import 'connection.dart';
+import 'daos/assets_dao.dart';
 import 'daos/entries_dao.dart';
 import 'daos/notebooks_dao.dart';
 import 'daos/todos_dao.dart';
@@ -22,7 +23,7 @@ part 'database.g.dart';
     SyncMeta,
     SettingsKv,
   ],
-  daos: [EntriesDao, TodosDao, NotebooksDao],
+  daos: [EntriesDao, TodosDao, NotebooksDao, AssetsDao],
 )
 class PlainLeafDatabase extends _$PlainLeafDatabase {
   PlainLeafDatabase() : super(openPlainLeafDb());

@@ -31,6 +31,12 @@
 - 路由工厂化 buildAppRouter()（测试隔离）；时间轴入口：FAB 新建、卡片点击编辑、AppBar 草稿箱/回收站
 - 测试：test/lifecycle_test.dart 4 例（更新双写/草稿流转/回收恢复/30 天清理），全套 12 例
 
+### Added（阶段 1 · W4 图片输入与入库，2026-09-16）
+- MediaStorage 私有目录服务：原图复制 media/yyyy/mm/（相对路径统一正斜杠），resolve/deleteRel
+- 图片附件条：编辑器内拍照/选图（image_picker 1.2.3）→ attachImage 落 assets 表 → 缩略图条可删除；时间轴卡片消费 firstAssetRelPath 显示真实缩略图
+- AssetsDao：attach/byEntry/softDelete；Repository 附件能力（attachImage/firstImagePath，构造注入 AssetsDao+MediaStorage）
+- 测试：test/media_test.dart 3 例（导入解析/挂接取图/无图与软删语义），全套 15 例
+
 ## [0.1.0] - unreleased
 
 - M1 目标（2026-10-11）：MVP 记录内核（编辑器/图片管线/搜索/备份），发布 v0.1.0-alpha tag
