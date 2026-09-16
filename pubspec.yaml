@@ -1,4 +1,4 @@
-name: plainleaf
+﻿name: plainleaf
 description: "素页 PlainLeaf - 本地优先的图文记录工具"
 publish_to: 'none'
 version: 0.1.0+1
@@ -17,6 +17,8 @@ dependency_overrides:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
   cupertino_icons: ^1.0.8
 
   # 状态管理与路由（架构红线：只用 Riverpod + go_router）
@@ -28,8 +30,11 @@ dependencies:
   drift_flutter: ^0.2.0          # drift 官方连接助手（跨平台打开数据库）
   sqlite3_flutter_libs: ^0.5.0   # Android/iOS 自带 SQLite（含 FTS5）
   path_provider: ^2.1.0          # 私有目录（媒体文件 W4 使用，数据层先行依赖）
-  uuid: ^4.4.0                   # §4.3 五字段 uuid 必需（清单外补充，理由见 handoff）
+  uuid: ^4.4.0                   # §4.3 五字段 uuid 必需
   sqlite3: ^2.4.0                # 宿主机内存库测试用（drift 传递依赖，显式声明过 lint）
+
+  # 富文本编辑器（W3：Delta JSON 持久化；图片嵌入 W4 用 flutter_quill_extensions）
+  flutter_quill: ^11.6.0
 
 dev_dependencies:
   flutter_test:
