@@ -35,7 +35,15 @@ class PlainLeafDatabase extends _$PlainLeafDatabase {
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
-        onCreate: (m) => m.createAll(),
+        onCreate: (m) async {
+          await m.createAll();
+          // entries_fts：FTS5 虚表（归档计划书 §7.2；内容镜像 entries.title/plainText）
+          // W2 起 Repository 在同一事务内双写 entries + entries_fts（红线：不用 trigger）
+          await customStatement(
+            'CREATE VIRTUAL TABLE IF NOT EXISTS entries_fts '
+            'USING fts5(entry_id UNINDEXED, title, content_text)',
+          );
+        },
         // 阶段 0 无历史版本；W2+ 表结构变更在此追加 MigrationStep（禁「卸载重装」绕过）
         onUpgrade: (m, from, to) async {},
       );

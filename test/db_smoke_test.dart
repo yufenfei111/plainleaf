@@ -20,6 +20,9 @@ void main() {
     expect(entries.first.uuid.length, 36);
     expect(entries.first.version, 1);
     expect(entries.first.deleted, false);
+    // FTS5：种子已入全文索引，标题词可检索
+    final hits = await db.entriesDao.searchEntryIds('阶段');
+    expect(hits, isNotEmpty);
     await db.close();
   }, timeout: const Timeout(Duration(seconds: 30)));
 }

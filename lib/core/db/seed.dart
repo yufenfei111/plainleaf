@@ -19,6 +19,16 @@ class DemoSeed {
     const uuidGen = Uuid();
     final now = DateTime.now();
 
+    // entries_fts 同步：种子记录入全文索引（W2 Repository 双写前的过渡）
+    Future<void> seedFts() async {
+      final all = await db.select(db.entries).get();
+      final dao = db.entriesDao;
+      for (final e in all) {
+        await dao.upsertFtsRow(e.id, e.title, e.plainText);
+      }
+    }
+    // 在条目与待办写完后调用
+
     await db.batch((b) {
       b.insert(
         db.notebooks,
@@ -113,6 +123,8 @@ class DemoSeed {
         ),
       );
     });
+
+    await seedFts();
 
     await db.into(db.settingsKv).insert(
           SettingsKvCompanion.insert(key: _flagKey, value: const Value('1')),
