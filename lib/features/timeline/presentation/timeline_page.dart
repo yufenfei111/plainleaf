@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../domain/entities/timeline_entry.dart';
 import 'providers/timeline_providers.dart';
 
-/// 时间轴首页（W2：数据链路走 Repository → Riverpod AsyncValue）
+/// 时间轴首页（W3：编辑器/草稿箱/回收站全链路接入）
 /// 页面要素（计划书 §5.2）：日期锚点、图文卡片、心情色点、悬浮「+」
 /// 走查三要素：loading / empty / error 三态齐全。
 class TimelinePage extends ConsumerWidget {
@@ -15,14 +16,23 @@ class TimelinePage extends ConsumerWidget {
     final timeline = ref.watch(timelineStreamProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('素页')),
+      appBar: AppBar(
+        title: const Text('素页'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.edit_note),
+            tooltip: '草稿箱',
+            onPressed: () => context.push('/drafts'),
+          ),
+          IconButton(
+            icon: const Icon(Icons.delete_outline),
+            tooltip: '回收站',
+            onPressed: () => context.push('/trash'),
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          // W3 编辑器页接入后跳转编辑器；当前仅占位提示
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('编辑器将在 W3（MVP 阶段）接入')),
-          );
-        },
+        onPressed: () => context.push('/editor'),
         icon: const Icon(Icons.add),
         label: const Text('记一笔'),
       ),
@@ -98,79 +108,84 @@ class _EntryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final moodColor = entry.mood == null ? null : _moodColors[entry.mood!];
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 图文卡片左侧：首图占位（W4 图片管线接入后显示真实缩略图）
-            Container(
-              width: 52,
-              height: 52,
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primaryContainer,
-                borderRadius: BorderRadius.circular(12),
+      // 点击卡片进入编辑器继续编辑（W3 记录内核）
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () => context.push('/editor?id=${entry.id}'),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 图文卡片左侧：首图占位（W4 图片管线接入后显示真实缩略图）
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  switch (entry.type) {
+                    EntryType.diary => Icons.edit_note,
+                    EntryType.quick => Icons.bolt,
+                    EntryType.todo => Icons.check_circle_outline,
+                    EntryType.note => Icons.sticky_note_2_outlined,
+                  },
+                  color: Theme.of(context).colorScheme.primary,
+                ),
               ),
-              child: Icon(
-                switch (entry.type) {
-                  EntryType.diary => Icons.edit_note,
-                  EntryType.quick => Icons.bolt,
-                  EntryType.todo => Icons.check_circle_outline,
-                  EntryType.note => Icons.sticky_note_2_outlined,
-                },
-                color: Theme.of(context).colorScheme.primary,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          entry.title.isEmpty ? '(无标题)' : entry.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleMedium
-                              ?.copyWith(fontWeight: FontWeight.w600),
-                        ),
-                      ),
-                      if (moodColor != null)
-                        Container(
-                          width: 10,
-                          height: 10,
-                          decoration: BoxDecoration(
-                            color: moodColor,
-                            shape: BoxShape.circle,
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            entry.title.isEmpty ? '(无标题)' : entry.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w600),
                           ),
                         ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    entry.plainText.isEmpty ? '(无正文)' : entry.plainText,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                  const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      _Chip(label: entry.type.label),
-                      if (entry.notebookName != null) ...[
-                        const SizedBox(width: 6),
-                        _Chip(label: entry.notebookName!),
+                        if (moodColor != null)
+                          Container(
+                            width: 10,
+                            height: 10,
+                            decoration: BoxDecoration(
+                              color: moodColor,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
                       ],
-                    ],
-                  ),
-                ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      entry.plainText.isEmpty ? '(无正文)' : entry.plainText,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        _Chip(label: entry.type.label),
+                        if (entry.notebookName != null) ...[
+                          const SizedBox(width: 6),
+                          _Chip(label: entry.notebookName!),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
