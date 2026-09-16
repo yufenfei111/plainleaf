@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:plainleaf/app/providers.dart';
 import 'package:plainleaf/core/db/database.dart';
 import 'package:plainleaf/core/db/seed.dart';
+import 'package:plainleaf/app/router.dart';
 import 'package:plainleaf/main.dart';
 
 /// 阶段 0 UI 冒烟测试（Day 7 验收项：flutter test 通过）
@@ -41,7 +42,8 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [dbProvider.overrideWithValue(db)],
-        child: const PlainLeafApp(),
+        // 每个用例独立 router：go_router 实例有内部导航状态，跨用例复用会互相污染
+        child: PlainLeafApp(routerConfig: buildAppRouter()),
       ),
     );
     await settleFrames(tester);
@@ -74,6 +76,27 @@ void main() {
     expect(find.text('完成阶段 0 骨架验收'), findsOneWidget);
     await tester.tap(find.byType(Checkbox).first);
     await settleFrames(tester);
+    await drainTimers(tester);
+  }, timeout: const Timeout(Duration(seconds: 60)));
+
+  testWidgets('W3 编辑器冒烟：新建 → 输入标题 → 完成发布 → 时间轴可见', (tester) async {
+    await pumpApp(tester);
+
+    // 悬浮「+」进入编辑器（新建 = 先落草稿拿 id）
+    await tester.tap(find.text('记一笔'));
+    await settleFrames(tester);
+    // 新建进入编辑器：先落草稿，初始为「已保存」态
+    expect(find.text('已保存'), findsOneWidget);
+
+    // 输入标题（防抖 500ms 内的内容由「完成」按钮的 flush 兜底）
+    await tester.enterText(find.byType(TextField).first, '冒烟发布稿');
+    await settleFrames(tester);
+
+    // 点「完成」发布并返回时间轴
+    await tester.tap(find.text('完成'));
+    await settleFrames(tester);
+    expect(find.text('冒烟发布稿'), findsOneWidget);
+
     await drainTimers(tester);
   }, timeout: const Timeout(Duration(seconds: 60)));
 
