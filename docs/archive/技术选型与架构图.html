@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>技术选型雷达图与系统分层架构 · 拾光札记</title>
+<style>
+  :root{
+    --ink:#1A1B1C; --ink-2:#52606d; --ink-3:#7b8794;
+    --bg:#fbfaf6; --card:#fff; --line:#e6e3da;
+    --accent:#3d9a8b; --accent-soft:#e8f4f1;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:"PingFang SC","Microsoft YaHei","Segoe UI",Arial,sans-serif;
+    line-height:1.7;font-size:14.5px;}
+  .wrap{max-width:960px;margin:0 auto;padding:32px 24px 60px;}
+  h1{font-size:22px;margin:0 0 4px;}
+  .sub{color:var(--ink-3);font-size:13px;margin-bottom:26px;}
+  h2{font-size:17px;margin:30px 0 6px;padding-left:11px;border-left:4px solid var(--accent);}
+  .cap{color:var(--ink-3);font-size:12.5px;margin:0 0 10px;}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 16px;margin:10px 0 8px;}
+  #radar{width:100%;height:440px;min-width:0;}
+  .fallback{display:none;padding:14px;font-size:13px;color:var(--ink-2);}
+  /* 架构图 */
+  .layer{border-radius:12px;padding:12px 16px;margin:0 0 10px;position:relative;}
+  .layer .lname{font-weight:700;font-size:14px;margin-bottom:8px;display:flex;align-items:center;gap:8px;}
+  .layer .lname span.tag{font-weight:400;font-size:11.5px;color:var(--ink-3);}
+  .nodes{display:flex;flex-wrap:wrap;gap:8px;}
+  .node{background:rgba(255,255,255,.75);border:1px solid rgba(0,0,0,.1);
+    border-radius:8px;padding:5px 11px;font-size:12.8px;color:var(--ink);}
+  .l1{background:linear-gradient(135deg,#e3f1ee,#dcecf3);}
+  .l2{background:linear-gradient(135deg,#e8f0f7,#e4eaf5);}
+  .l3{background:linear-gradient(135deg,#eef3ec,#e6f0e4);}
+  .l4{background:linear-gradient(135deg,#f6efe4,#f3ece0);}
+  .l5{background:linear-gradient(135deg,#f3eeee,#f1e9ec);}
+  .arrow{text-align:center;color:var(--ink-3);font-size:15px;line-height:1;margin:-4px 0 6px;}
+  .flow-note{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;}
+  .flow-note div{flex:1 1 220px;background:var(--accent-soft);border-radius:9px;padding:9px 13px;font-size:12.8px;}
+  .flow-note b{color:var(--accent);}
+  .legend{font-size:12px;color:var(--ink-3);margin-top:6px;}
+  @media(max-width:560px){#radar{height:360px;}.wrap{padding:20px 12px 40px;}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>技术选型对比与系统分层架构</h1>
+  <div class="sub">拾光札记（MemoLeaf）项目计划书 · 配套可视化 · 2026-09-03</div>
+
+  <h2>一、四条客户端技术路线多维评分</h2>
+  <p class="cap">5 分制，基于公开技术资料与同类开源项目调研的工程评估（非统计数据），分越高越有利；「学习友好度」对应当前已掌握 Java/Android/小程序基础的学习成本。</p>
+  <div class="panel">
+    <div id="radar"></div>
+    <div id="radarFallback" class="fallback">图表库未加载，文字结论：Flutter 在跨平台、图文 UI、开源验证、本地能力四项领先，综合最优；Kotlin/Compose 性能与学习友好度好但仅限 Android；小程序本地能力与同类验证不足。</div>
+  </div>
+  <p class="legend">结论：首选 Flutter（Immich 113.3k★、AppFlowy 76.2k★、Moodiary 2.0k★ 均为 Flutter）；保守备选 Kotlin+Compose 单端方案。</p>
+
+  <h2>二、系统分层架构（示意）</h2>
+  <p class="cap">轻量 Clean Architecture：上层只依赖相邻下层的抽象，数据源可在本地与 WebDAV 远端之间替换，UI 不感知数据来源。</p>
+  <div class="panel">
+
+    <div class="layer l1">
+      <div class="lname">① 表现层 Presentation <span class="tag">Page / Widget —— 只负责渲染与交互</span></div>
+      <div class="nodes">
+        <span class="node">时间轴首页</span><span class="node">图文编辑器</span>
+        <span class="node">相册网格</span><span class="node">学习（待办/计时/统计）</span>
+        <span class="node">笔记本/标签</span><span class="node">日记与日历</span>
+        <span class="node">搜索</span><span class="node">我的/设置</span>
+      </div>
+    </div>
+    <div class="arrow">▼ 只通过状态读写，不直接碰数据库</div>
+
+    <div class="layer l2">
+      <div class="lname">② 状态层 State <span class="tag">flutter_riverpod：Notifier / Provider / 响应式 Stream</span></div>
+      <div class="nodes">
+        <span class="node">EntryNotifier</span><span class="node">GalleryProvider</span>
+        <span class="node">StudyTimerNotifier</span><span class="node">SearchQuery</span>
+        <span class="node">SyncStateProvider</span><span class="node">SettingsProvider</span>
+      </div>
+    </div>
+    <div class="arrow">▼ 调用用例 / 仓库接口</div>
+
+    <div class="layer l3">
+      <div class="lname">③ 领域层 Domain <span class="tag">纯 Dart，无框架依赖，可单测</span></div>
+      <div class="nodes">
+        <span class="node">实体：Entry / Asset / Notebook / Todo / StudySession</span>
+        <span class="node">Repository 抽象接口</span><span class="node">同步合并(LWW) / 统计计算等用例</span>
+      </div>
+    </div>
+    <div class="arrow">▼ 接口由数据层实现（依赖倒置）</div>
+
+    <div class="layer l4">
+      <div class="lname">④ 数据层 Data <span class="tag">Repository 实现 + 多数据源</span></div>
+      <div class="nodes">
+        <span class="node">Drift / SQLite（结构化数据 + FTS5 全文检索）</span>
+        <span class="node">媒体文件存储（原图 + 两级缩略图）</span>
+        <span class="node">KV / flutter_secure_storage</span>
+        <span class="node">WebDAV 远端数据源（V3 双向同步）</span>
+      </div>
+    </div>
+    <div class="arrow">▼ 调用基础服务</div>
+
+    <div class="layer l5">
+      <div class="lname">⑤ 基础服务 Core <span class="tag">横切能力，被各层复用</span></div>
+      <div class="nodes">
+        <span class="node">图片管线（压缩/EXIF/Isolate）</span>
+        <span class="node">AES-GCM 加解密</span>
+        <span class="node">备份与导出（zip/PDF/长图/Markdown）</span>
+        <span class="node">后台任务与本地通知</span><span class="node">权限管理</span>
+      </div>
+    </div>
+
+    <div class="flow-note">
+      <div><b>写入链路：</b>编辑器 → 图片管线转码 → Repository 事务写库（entries/assets/tags/FTS）→ Stream 自动刷新时间轴、相册、统计</div>
+      <div><b>同步链路：</b>写库同时入 sync_queue → SyncWorker 打包 →（可选加密）→ WebDAV；恢复时按 uuid+version 合并</div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+<script>
+(function(){
+  try{
+    var el = document.getElementById('radar');
+    if(!el) return;
+    if(typeof echarts === 'undefined'){
+      el.style.display='none';
+      var fb = document.getElementById('radarFallback');
+      if(fb) fb.style.display='block';
+      return;
+    }
+    var chart = echarts.init(el);
+    chart.setOption({
+      backgroundColor:'transparent',
+      title:{ text:'客户端技术路线六维评分（工程评估，5 分制）', left:'center',
+        textStyle:{color:'#1A1B1C',fontSize:15,fontWeight:600} },
+      tooltip:{ trigger:'item', triggerOn:'click', renderMode:'richText', confine:true,
+        textStyle:{fontSize:11,lineHeight:15}, padding:[6,8] },
+      legend:{ bottom:0, type:'scroll', itemWidth:14, itemHeight:9,
+        textStyle:{color:'#52606d',fontSize:12} },
+      radar:{
+        center:['50%','52%'], radius:'62%',
+        indicator:[
+          {name:'跨平台覆盖',max:5},
+          {name:'性能流畅度',max:5},
+          {name:'图文UI效率',max:5},
+          {name:'开源项目验证',max:5},
+          {name:'本地能力',max:5},
+          {name:'学习友好度',max:5}
+        ],
+        axisName:{color:'#52606d',fontSize:12},
+        splitLine:{lineStyle:{color:'#e0ded6'}},
+        splitArea:{areaStyle:{color:['rgba(0,0,0,0.015)','rgba(0,0,0,0.035)']}},
+        axisLine:{lineStyle:{color:'#d8d5cc'}}
+      },
+      series:[{
+        type:'radar',
+        data:[
+          {name:'Flutter（推荐）',value:[5,4.5,5,5,4.5,3.5],
+            itemStyle:{color:'#3d9a8b'},lineStyle:{color:'#3d9a8b',width:2.5},
+            areaStyle:{color:'rgba(61,154,139,0.22)'}},
+          {name:'React Native',value:[4.5,3,3.5,3.5,4,3.5],
+            itemStyle:{color:'#5b8db8'},lineStyle:{color:'#5b8db8',width:1.5},
+            areaStyle:{color:'rgba(91,141,184,0.10)'}},
+          {name:'Kotlin + Compose',value:[2,5,4,3,5,4],
+            itemStyle:{color:'#e1a35c'},lineStyle:{color:'#e1a35c',width:1.5},
+            areaStyle:{color:'rgba(225,163,92,0.10)'}},
+          {name:'微信小程序',value:[2,2.5,3.5,1,2,4.5],
+            itemStyle:{color:'#c07a9c'},lineStyle:{color:'#c07a9c',width:1.5},
+            areaStyle:{color:'rgba(192,122,156,0.08)'}}
+        ]
+      }]
+    });
+    window.addEventListener('resize', function(){ chart.resize(); });
+  }catch(e){ if(window&&window.console) console.error(e); }
+})();
+</script>
+</body>
+</html>
