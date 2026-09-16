@@ -30,6 +30,7 @@ class LocalTimelineRepository implements TimelineRepository {
           uuid: const Uuid().v4(),
           notebookId: Value(draft.notebookId),
           type: Value(draft.type.name),
+          status: Value(draft.status.name),
           title: Value(draft.title),
           plainText: Value(draft.plainText),
           contentDelta: Value(draft.contentDelta),
@@ -45,11 +46,36 @@ class LocalTimelineRepository implements TimelineRepository {
   }
 
   @override
+  Future<void> updateEntry(int id, EntryDraft draft) async {
+    try {
+      await _dao.updateEntryContent(
+        id,
+        title: draft.title,
+        plainText: draft.plainText,
+        contentDelta: draft.contentDelta,
+        ftsTitle: draft.title,
+        ftsContent: draft.plainText,
+      );
+    } on Exception catch (error) {
+      throw DatabaseException('更新记录失败', cause: error);
+    }
+  }
+
+  @override
   Future<void> softDelete(int id) async {
     try {
       await _dao.softDelete(id);
     } on Exception catch (error) {
       throw DatabaseException('删除记录失败', cause: error);
+    }
+  }
+
+  @override
+  Future<void> restore(int id) async {
+    try {
+      await _dao.restore(id);
+    } on Exception catch (error) {
+      throw DatabaseException('恢复记录失败', cause: error);
     }
   }
 
@@ -62,6 +88,62 @@ class LocalTimelineRepository implements TimelineRepository {
     }
   }
 
+  @override
+  Stream<List<TimelineEntry>> watchDrafts() =>
+      _dao.watchDrafts().map(_rowsToEntities);
+
+  @override
+  Stream<List<TimelineEntry>> watchTrash() =>
+      _dao.watchTrash().map(_rowsToEntities);
+
+  @override
+  Future<void> setStatus(int id, {required String status}) async {
+    try {
+      await _dao.setStatus(id, status: status);
+    } on Exception catch (error) {
+      throw DatabaseException('更新状态失败', cause: error);
+    }
+  }
+
+  @override
+  Future<void> setPinned(int id, {required bool pinned}) async {
+    try {
+      await _dao.setPinned(id, pinned: pinned);
+    } on Exception catch (error) {
+      throw DatabaseException('置顶操作失败', cause: error);
+    }
+  }
+
+  @override
+  Future<int> purgeExpiredTrash({int retainDays = 30}) async {
+    try {
+      return await _dao.purgeExpiredTrash(retainDays: retainDays);
+    } on Exception catch (error) {
+      throw DatabaseException('清理回收站失败', cause: error);
+    }
+  }
+
+  // ── 内部 ──────────────────────────────────────────────────────────
+
+  List<TimelineEntry> _rowsToEntities(List<Entry> rows) =>
+      rows.map(_entryToEntity).toList(growable: false);
+
+  /// 草稿/回收站行没有联表数据；notebook 字段留空，列表页只展示内容本身
+  TimelineEntry _entryToEntity(Entry e) {
+    return TimelineEntry(
+      id: e.id,
+      uuid: e.uuid,
+      title: e.title,
+      plainText: e.plainText,
+      type: EntryType.fromName(e.type),
+      status: EntryStatus.fromName(e.status),
+      pinned: e.pinned,
+      entryDate: e.entryDate,
+      mood: e.mood,
+      notebookId: e.notebookId,
+    );
+  }
+
   TimelineEntry _rowToEntity(TimelineRow row) {
     final entry = row.entry;
     return TimelineEntry(
@@ -70,6 +152,7 @@ class LocalTimelineRepository implements TimelineRepository {
       title: entry.title,
       plainText: entry.plainText,
       type: EntryType.fromName(entry.type),
+      status: EntryStatus.fromName(entry.status),
       pinned: entry.pinned,
       entryDate: entry.entryDate,
       mood: entry.mood,
