@@ -127,7 +127,7 @@ class DemoSeed {
     await seedFts();
 
     await db.into(db.settingsKv).insert(
-          SettingsKvCompanion.insert(key: _flagKey, value: const Value('1')),
+          SettingsKvCompanion.insert(key: _flagKey, value: const Value('1'), uuid: uuidGen.v4()),
           mode: InsertMode.insertOrIgnore,
         );
   }

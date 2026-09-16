@@ -4861,8 +4861,80 @@ class $SettingsKvTable extends SettingsKv
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _uuidMeta = const VerificationMeta('uuid');
   @override
-  List<GeneratedColumn> get $columns => [key, value];
+  late final GeneratedColumn<String> uuid = GeneratedColumn<String>(
+    'uuid',
+    aliasedName,
+    false,
+    additionalChecks: GeneratedColumn.checkTextLength(
+      minTextLength: 36,
+      maxTextLength: 36,
+    ),
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  static const VerificationMeta _versionMeta = const VerificationMeta(
+    'version',
+  );
+  @override
+  late final GeneratedColumn<int> version = GeneratedColumn<int>(
+    'version',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(1),
+  );
+  static const VerificationMeta _deletedMeta = const VerificationMeta(
+    'deleted',
+  );
+  @override
+  late final GeneratedColumn<bool> deleted = GeneratedColumn<bool>(
+    'deleted',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("deleted" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    key,
+    value,
+    uuid,
+    createdAt,
+    updatedAt,
+    version,
+    deleted,
+  ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -4889,6 +4961,38 @@ class $SettingsKvTable extends SettingsKv
         value.isAcceptableOrUnknown(data['value']!, _valueMeta),
       );
     }
+    if (data.containsKey('uuid')) {
+      context.handle(
+        _uuidMeta,
+        uuid.isAcceptableOrUnknown(data['uuid']!, _uuidMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_uuidMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    }
+    if (data.containsKey('version')) {
+      context.handle(
+        _versionMeta,
+        version.isAcceptableOrUnknown(data['version']!, _versionMeta),
+      );
+    }
+    if (data.containsKey('deleted')) {
+      context.handle(
+        _deletedMeta,
+        deleted.isAcceptableOrUnknown(data['deleted']!, _deletedMeta),
+      );
+    }
     return context;
   }
 
@@ -4906,6 +5010,26 @@ class $SettingsKvTable extends SettingsKv
         DriftSqlType.string,
         data['${effectivePrefix}value'],
       ),
+      uuid: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}uuid'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+      version: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}version'],
+      )!,
+      deleted: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}deleted'],
+      )!,
     );
   }
 
@@ -4918,7 +5042,20 @@ class $SettingsKvTable extends SettingsKv
 class SettingsKvData extends DataClass implements Insertable<SettingsKvData> {
   final String key;
   final String? value;
-  const SettingsKvData({required this.key, this.value});
+  final String uuid;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final int version;
+  final bool deleted;
+  const SettingsKvData({
+    required this.key,
+    this.value,
+    required this.uuid,
+    required this.createdAt,
+    required this.updatedAt,
+    required this.version,
+    required this.deleted,
+  });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -4926,6 +5063,11 @@ class SettingsKvData extends DataClass implements Insertable<SettingsKvData> {
     if (!nullToAbsent || value != null) {
       map['value'] = Variable<String>(value);
     }
+    map['uuid'] = Variable<String>(uuid);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    map['version'] = Variable<int>(version);
+    map['deleted'] = Variable<bool>(deleted);
     return map;
   }
 
@@ -4935,6 +5077,11 @@ class SettingsKvData extends DataClass implements Insertable<SettingsKvData> {
       value: value == null && nullToAbsent
           ? const Value.absent()
           : Value(value),
+      uuid: Value(uuid),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+      version: Value(version),
+      deleted: Value(deleted),
     );
   }
 
@@ -4946,6 +5093,11 @@ class SettingsKvData extends DataClass implements Insertable<SettingsKvData> {
     return SettingsKvData(
       key: serializer.fromJson<String>(json['key']),
       value: serializer.fromJson<String?>(json['value']),
+      uuid: serializer.fromJson<String>(json['uuid']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      version: serializer.fromJson<int>(json['version']),
+      deleted: serializer.fromJson<bool>(json['deleted']),
     );
   }
   @override
@@ -4954,20 +5106,40 @@ class SettingsKvData extends DataClass implements Insertable<SettingsKvData> {
     return <String, dynamic>{
       'key': serializer.toJson<String>(key),
       'value': serializer.toJson<String?>(value),
+      'uuid': serializer.toJson<String>(uuid),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'version': serializer.toJson<int>(version),
+      'deleted': serializer.toJson<bool>(deleted),
     };
   }
 
   SettingsKvData copyWith({
     String? key,
     Value<String?> value = const Value.absent(),
+    String? uuid,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    int? version,
+    bool? deleted,
   }) => SettingsKvData(
     key: key ?? this.key,
     value: value.present ? value.value : this.value,
+    uuid: uuid ?? this.uuid,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+    version: version ?? this.version,
+    deleted: deleted ?? this.deleted,
   );
   SettingsKvData copyWithCompanion(SettingsKvCompanion data) {
     return SettingsKvData(
       key: data.key.present ? data.key.value : this.key,
       value: data.value.present ? data.value.value : this.value,
+      uuid: data.uuid.present ? data.uuid.value : this.uuid,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      version: data.version.present ? data.version.value : this.version,
+      deleted: data.deleted.present ? data.deleted.value : this.deleted,
     );
   }
 
@@ -4975,43 +5147,80 @@ class SettingsKvData extends DataClass implements Insertable<SettingsKvData> {
   String toString() {
     return (StringBuffer('SettingsKvData(')
           ..write('key: $key, ')
-          ..write('value: $value')
+          ..write('value: $value, ')
+          ..write('uuid: $uuid, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('version: $version, ')
+          ..write('deleted: $deleted')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(key, value);
+  int get hashCode =>
+      Object.hash(key, value, uuid, createdAt, updatedAt, version, deleted);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is SettingsKvData &&
           other.key == this.key &&
-          other.value == this.value);
+          other.value == this.value &&
+          other.uuid == this.uuid &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt &&
+          other.version == this.version &&
+          other.deleted == this.deleted);
 }
 
 class SettingsKvCompanion extends UpdateCompanion<SettingsKvData> {
   final Value<String> key;
   final Value<String?> value;
+  final Value<String> uuid;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  final Value<int> version;
+  final Value<bool> deleted;
   final Value<int> rowid;
   const SettingsKvCompanion({
     this.key = const Value.absent(),
     this.value = const Value.absent(),
+    this.uuid = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.version = const Value.absent(),
+    this.deleted = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   SettingsKvCompanion.insert({
     required String key,
     this.value = const Value.absent(),
+    required String uuid,
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.version = const Value.absent(),
+    this.deleted = const Value.absent(),
     this.rowid = const Value.absent(),
-  }) : key = Value(key);
+  }) : key = Value(key),
+       uuid = Value(uuid);
   static Insertable<SettingsKvData> custom({
     Expression<String>? key,
     Expression<String>? value,
+    Expression<String>? uuid,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? version,
+    Expression<bool>? deleted,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
       if (key != null) 'key': key,
       if (value != null) 'value': value,
+      if (uuid != null) 'uuid': uuid,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (version != null) 'version': version,
+      if (deleted != null) 'deleted': deleted,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -5019,11 +5228,21 @@ class SettingsKvCompanion extends UpdateCompanion<SettingsKvData> {
   SettingsKvCompanion copyWith({
     Value<String>? key,
     Value<String?>? value,
+    Value<String>? uuid,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+    Value<int>? version,
+    Value<bool>? deleted,
     Value<int>? rowid,
   }) {
     return SettingsKvCompanion(
       key: key ?? this.key,
       value: value ?? this.value,
+      uuid: uuid ?? this.uuid,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      version: version ?? this.version,
+      deleted: deleted ?? this.deleted,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -5037,6 +5256,21 @@ class SettingsKvCompanion extends UpdateCompanion<SettingsKvData> {
     if (value.present) {
       map['value'] = Variable<String>(value.value);
     }
+    if (uuid.present) {
+      map['uuid'] = Variable<String>(uuid.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (version.present) {
+      map['version'] = Variable<int>(version.value);
+    }
+    if (deleted.present) {
+      map['deleted'] = Variable<bool>(deleted.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -5048,6 +5282,11 @@ class SettingsKvCompanion extends UpdateCompanion<SettingsKvData> {
     return (StringBuffer('SettingsKvCompanion(')
           ..write('key: $key, ')
           ..write('value: $value, ')
+          ..write('uuid: $uuid, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('version: $version, ')
+          ..write('deleted: $deleted, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -7435,12 +7674,22 @@ typedef $$SettingsKvTableCreateCompanionBuilder =
     SettingsKvCompanion Function({
       required String key,
       Value<String?> value,
+      required String uuid,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<int> version,
+      Value<bool> deleted,
       Value<int> rowid,
     });
 typedef $$SettingsKvTableUpdateCompanionBuilder =
     SettingsKvCompanion Function({
       Value<String> key,
       Value<String?> value,
+      Value<String> uuid,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<int> version,
+      Value<bool> deleted,
       Value<int> rowid,
     });
 
@@ -7460,6 +7709,31 @@ class $$SettingsKvTableFilterComposer
 
   ColumnFilters<String> get value => $composableBuilder(
     column: $table.value,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get uuid => $composableBuilder(
+    column: $table.uuid,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get version => $composableBuilder(
+    column: $table.version,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get deleted => $composableBuilder(
+    column: $table.deleted,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -7482,6 +7756,31 @@ class $$SettingsKvTableOrderingComposer
     column: $table.value,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get uuid => $composableBuilder(
+    column: $table.uuid,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get version => $composableBuilder(
+    column: $table.version,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get deleted => $composableBuilder(
+    column: $table.deleted,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$SettingsKvTableAnnotationComposer
@@ -7498,6 +7797,21 @@ class $$SettingsKvTableAnnotationComposer
 
   GeneratedColumn<String> get value =>
       $composableBuilder(column: $table.value, builder: (column) => column);
+
+  GeneratedColumn<String> get uuid =>
+      $composableBuilder(column: $table.uuid, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<int> get version =>
+      $composableBuilder(column: $table.version, builder: (column) => column);
+
+  GeneratedColumn<bool> get deleted =>
+      $composableBuilder(column: $table.deleted, builder: (column) => column);
 }
 
 class $$SettingsKvTableTableManager
@@ -7537,16 +7851,40 @@ class $$SettingsKvTableTableManager
               ({
                 Value<String> key = const Value.absent(),
                 Value<String?> value = const Value.absent(),
+                Value<String> uuid = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> version = const Value.absent(),
+                Value<bool> deleted = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
-              }) => SettingsKvCompanion(key: key, value: value, rowid: rowid),
+              }) => SettingsKvCompanion(
+                key: key,
+                value: value,
+                uuid: uuid,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                version: version,
+                deleted: deleted,
+                rowid: rowid,
+              ),
           createCompanionCallback:
               ({
                 required String key,
                 Value<String?> value = const Value.absent(),
+                required String uuid,
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> version = const Value.absent(),
+                Value<bool> deleted = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => SettingsKvCompanion.insert(
                 key: key,
                 value: value,
+                uuid: uuid,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                version: version,
+                deleted: deleted,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

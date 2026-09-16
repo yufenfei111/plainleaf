@@ -149,10 +149,16 @@ class SyncMeta extends Table {
 }
 
 /// 需要同步/备份的配置（主题、字体、备份计划）；
-/// 纯设备本地偏好走 shared_preferences，密钥走 flutter_secure_storage（§4.3 存储分工）
+/// 纯设备本地偏好走 shared_preferences，密钥走 flutter_secure_storage（§4.3 存储分工）。
+/// 内容属「需同步配置」，故同样携带五字段（复核意见对齐检查表 Day5 口径）。
 class SettingsKv extends Table {
   TextColumn get key => text()();
   TextColumn get value => text().nullable()();
+  TextColumn get uuid => text().withLength(min: 36, max: 36)();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
+  IntColumn get version => integer().withDefault(const Constant(1))();
+  BoolColumn get deleted => boolean().withDefault(const Constant(false))();
 
   @override
   Set<Column> get primaryKey => {key};
