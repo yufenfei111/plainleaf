@@ -7,6 +7,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sqlite3/open.dart';
 
 import '../core/db/database.dart';
+import '../core/storage/media_storage.dart';
+
+/// 媒体私有目录服务（W4；路径约定 §4.3）
+final mediaStorageProvider =
+    Provider<MediaStorage>((ref) => MediaStorage());
 
 /// 全局数据库单例（Riverpod 注入）
 /// 分层红线：页面不直接触碰 DAO/文件系统，一律经由本 Provider 暴露的 Stream。

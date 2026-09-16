@@ -35,4 +35,10 @@ abstract interface class TimelineRepository {
 
   /// 回收站 30 天清理：物理删除过期软删行；App 启动调用。返回清理条数
   Future<int> purgeExpiredTrash({int retainDays = 30});
+
+  /// 为条目挂接一张本地图片（复制进私有目录 + assets 落库），返回 asset id
+  Future<int> attachImage(int entryId, String sourcePath);
+
+  /// 条目首图相对路径（时间轴缩略图用；无图返回 null）
+  Future<String?> firstImagePath(int entryId);
 }

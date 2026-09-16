@@ -1,9 +1,11 @@
 import 'package:drift/drift.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../core/db/daos/assets_dao.dart';
 import '../../../core/db/daos/entries_dao.dart';
 import '../../../core/db/database.dart';
 import '../../../core/errors/app_exception.dart';
+import '../../../core/storage/media_storage.dart';
 import '../domain/entities/timeline_entry.dart';
 import '../domain/repositories/timeline_repository.dart';
 
@@ -11,9 +13,17 @@ import '../domain/repositories/timeline_repository.dart';
 /// 一致性：所有写操作走 DAO 事务原语（含 FTS 双写）；DAO 异常在调用点统一
 /// 包装为 [DatabaseException]（错误三层透传第一层）。
 class LocalTimelineRepository implements TimelineRepository {
-  const LocalTimelineRepository(this._dao);
+  LocalTimelineRepository(
+    this._dao, {
+    this.assetsDao,
+    MediaStorage? mediaStorage,
+  })  : _media = mediaStorage ?? MediaStorage();
 
   final EntriesDao _dao;
+
+  /// 附件能力依赖（可空注入：未注入则 attach/first 路径不可用）
+  final AssetsDao? assetsDao;
+  final MediaStorage _media;
 
   @override
   Stream<List<TimelineEntry>> watchTimeline({int limit = 100}) {
@@ -142,6 +152,39 @@ class LocalTimelineRepository implements TimelineRepository {
       mood: e.mood,
       notebookId: e.notebookId,
     );
+  }
+
+  @override
+  Future<int> attachImage(int entryId, String sourcePath) async {
+    final dao = assetsDao;
+    if (dao == null) {
+      throw const DatabaseException('AssetsDao 未注入，无法挂接图片');
+    }
+    try {
+      final rel = await _media.importFile(sourcePath);
+      return await dao.attach(
+        uuid: const Uuid().v4(),
+        entryId: entryId,
+        kind: 'image',
+        relPath: rel,
+      );
+    } on Exception catch (error) {
+      throw DatabaseException('挂接图片失败', cause: error);
+    }
+  }
+
+  @override
+  Future<String?> firstImagePath(int entryId) async {
+    final dao = assetsDao;
+    if (dao == null) return null;
+    try {
+      final list = await dao.byEntry(entryId);
+      if (list.isEmpty) return null;
+      final f = await _media.resolve(list.first.relPath);
+      return f.existsSync() ? list.first.relPath : null;
+    } on Exception catch (error) {
+      throw DatabaseException('读取图片失败', cause: error);
+    }
   }
 
   TimelineEntry _rowToEntity(TimelineRow row) {
