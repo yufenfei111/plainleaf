@@ -20,7 +20,6 @@ class EntriesDao extends DatabaseAccessor<PlainLeafDatabase>
   EntriesDao(super.db);
 
   /// 时间轴流：未删除条目按「置顶优先 + 日期倒序」，流式联首图与笔记本
-  /// 注：资产/笔记本变更暂不触发重算，W2 Repository 层统一优化（阶段 0 演示够用）
   Stream<List<TimelineRow>> watchTimeline({int limit = 100}) {
     final query = select(entries)
       ..where((e) => e.deleted.equals(false))
@@ -61,33 +60,22 @@ class EntriesDao extends DatabaseAccessor<PlainLeafDatabase>
     });
   }
 
-  /// FTS5 全文搜索：返回命中条目 id（按相关度）
-  /// FTS5 query 语法由调用方转义；W2 Repository 双写后此助手接入 search feature
-  Future<List<int>> searchEntryIds(String ftsQuery) async {
-    final rows = await customSelect(
-      'SELECT entry_id FROM entries_fts WHERE entries_fts MATCH ? '
-      'ORDER BY rank LIMIT 50',
-      variables: [Variable.withString(ftsQuery)],
-      readsFrom: {attachedDatabase.entries},
-    ).get();
-    return rows.map((r) => r.read<int>('entry_id')).toList();
+  /// 保存新记录（事务双写）：entries 插入 + entries_fts 全文索引，同一事务落库。
+  /// —— §4.3 数据红线：双写走数据层事务（不用 trigger），保证可测试、可回滚。
+  Future<int> saveEntry({
+    required EntriesCompanion entry,
+    required String ftsTitle,
+    required String ftsContent,
+  }) {
+    return transaction(() async {
+      final id = await into(entries).insert(entry);
+      await _upsertFtsRow(id, ftsTitle, ftsContent);
+      return id;
+    });
   }
 
-  /// 插入/更新 FTS 行（供种子与 W2 Repository 双写复用）
-  Future<void> upsertFtsRow(int entryId, String title, String contentText) async {
-    await customStatement(
-      'DELETE FROM entries_fts WHERE entry_id = ?', [entryId],
-    );
-    await customStatement(
-      'INSERT INTO entries_fts (entry_id, title, content_text) VALUES (?, ?, ?)',
-      [entryId, title, contentText],
-    );
-  }
-  /// 插入一条记录（演示数据；W2 Repository 将在此做 entries + entries_fts 事务双写）
-  Future<int> insertEntry(EntriesCompanion data) => into(entries).insert(data);
-
-  /// 软删除（数据红线：一律软删除，version 递增）
-  /// 读-改-写放同一事务；W2 Repository 层会在此同时双写 entries_fts。
+  /// 软删除（事务双删）：entries.deleted 置位 + version 递增，同时清除 FTS 行。
+  /// 数据红线：一律软删除，物理行保留（回收站 30 天清理 W7 接入）。
   Future<void> softDelete(int id) {
     return transaction(() async {
       final row =
@@ -99,6 +87,32 @@ class EntriesDao extends DatabaseAccessor<PlainLeafDatabase>
           version: Value(row.version + 1),
         ),
       );
+      await customStatement('DELETE FROM entries_fts WHERE entry_id = ?', [id]);
     });
+  }
+
+  /// FTS5 全文搜索：返回命中条目 id（按相关度）。
+  Future<List<int>> searchEntryIds(String ftsQuery) async {
+    final rows = await customSelect(
+      'SELECT entry_id FROM entries_fts WHERE entries_fts MATCH ? '
+      'ORDER BY rank LIMIT 50',
+      variables: [Variable.withString(ftsQuery)],
+      readsFrom: {attachedDatabase.entries},
+    ).get();
+    return rows.map((r) => r.read<int>('entry_id')).toList();
+  }
+
+  /// FTS 行写入（仅事务内部调用；外部统一走 [saveEntry]）
+  Future<void> _upsertFtsRow(
+      int entryId, String title, String contentText) async {
+    await customStatement(
+      'DELETE FROM entries_fts WHERE entry_id = ?',
+      [entryId],
+    );
+    await customStatement(
+      'INSERT INTO entries_fts (entry_id, title, content_text) '
+      'VALUES (?, ?, ?)',
+      [entryId, title, contentText],
+    );
   }
 }

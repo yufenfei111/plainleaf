@@ -1,24 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../../app/providers.dart';
+import '../domain/entities/timeline_entry.dart';
+import 'providers/timeline_providers.dart';
 
-/// 时间轴首页（阶段 0 静态版 + Stream 实时数据）
+/// 时间轴首页（W2：数据链路走 Repository → Riverpod AsyncValue）
 /// 页面要素（计划书 §5.2）：日期锚点、图文卡片、心情色点、悬浮「+」
-/// UI 走查三要素（§5.2 规范）：加载态 / 空态 / 错误态齐全。
+/// 走查三要素：loading / empty / error 三态齐全。
 class TimelinePage extends ConsumerWidget {
   const TimelinePage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final db = ref.watch(dbProvider);
-    final timeline = db.entriesDao.watchTimeline();
+    final timeline = ref.watch(timelineStreamProvider);
 
     return Scaffold(
       appBar: AppBar(title: const Text('素页')),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () {
-          // W3 编辑器页接入后跳转编辑器；阶段 0 仅占位提示
+          // W3 编辑器页接入后跳转编辑器；当前仅占位提示
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('编辑器将在 W3（MVP 阶段）接入')),
           );
@@ -26,67 +26,18 @@ class TimelinePage extends ConsumerWidget {
         icon: const Icon(Icons.add),
         label: const Text('记一笔'),
       ),
-      body: StreamBuilder<List<TimelineRowData>>(
-        stream: timeline.map(
-          (rows) => rows
-              .map((r) => TimelineRowData(
-                    title: r.entry.title,
-                    plainText: r.entry.plainText,
-                    type: r.entry.type,
-                    mood: r.entry.mood,
-                    entryDate: r.entry.entryDate,
-                    space: r.notebook?.space,
-                    notebookName: r.notebook?.name,
-                  ))
-              .toList(),
-        ),
-        builder: (context, snap) {
-          if (snap.connectionState == ConnectionState.waiting) {
-            return const _LoadingView();
-          }
-          if (snap.hasError) {
-            return _ErrorView(error: '${snap.error}');
-          }
-          final rows = snap.data ?? const [];
-          if (rows.isEmpty) {
-            return const _EmptyView();
-          }
-          return _TimelineList(rows: rows);
-        },
+      body: timeline.when(
+        data: (entries) => entries.isEmpty
+            ? const _EmptyView()
+            : _TimelineList(entries: entries),
+        loading: () => const _LoadingView(),
+        error: (error, _) => _ErrorView(error: '$error'),
       ),
     );
   }
 }
 
-/// 时间轴卡片数据（阶段 0 内部结构；W2 由 Repository 领域模型替代）
-class TimelineRowData {
-  final String title;
-  final String plainText;
-  final String type;
-  final int? mood;
-  final DateTime entryDate;
-  final String? space;
-  final String? notebookName;
-
-  const TimelineRowData({
-    required this.title,
-    required this.plainText,
-    required this.type,
-    required this.entryDate,
-    this.mood,
-    this.space,
-    this.notebookName,
-  });
-}
-
-const _typeLabels = {
-  'note': '笔记',
-  'diary': '日记',
-  'quick': '速记',
-  'todo': '待办',
-};
-
-/// 心情 1-5 档色点（Material 色板映射，避免自定义色过多）
+/// 心情 1–5 档色点（Material 色板映射，避免自定义色过多）
 const _moodColors = <int, Color>{
   1: Color(0xFF90CAF9),
   2: Color(0xFFA5D6A7),
@@ -96,18 +47,18 @@ const _moodColors = <int, Color>{
 };
 
 class _TimelineList extends StatelessWidget {
-  const _TimelineList({required this.rows});
+  const _TimelineList({required this.entries});
 
-  final List<TimelineRowData> rows;
+  final List<TimelineEntry> entries;
 
   @override
   Widget build(BuildContext context) {
     // 日期锚点分组：同日合并，倒序展示
-    final groups = <String, List<TimelineRowData>>{};
-    for (final r in rows) {
+    final groups = <String, List<TimelineEntry>>{};
+    for (final r in entries) {
       final d = r.entryDate;
-      final key =
-          '${d.year}年${d.month.toString().padLeft(2, '0')}月${d.day.toString().padLeft(2, '0')}日';
+      final key = '${d.year}年${d.month.toString().padLeft(2, '0')}月'
+          '${d.day.toString().padLeft(2, '0')}日';
       groups.putIfAbsent(key, () => []).add(r);
     }
     final keys = groups.keys.toList(growable: false);
@@ -139,13 +90,13 @@ class _TimelineList extends StatelessWidget {
 }
 
 class _EntryCard extends StatelessWidget {
-  const _EntryCard(this.r);
+  const _EntryCard(this.entry);
 
-  final TimelineRowData r;
+  final TimelineEntry entry;
 
   @override
   Widget build(BuildContext context) {
-    final moodColor = r.mood == null ? null : _moodColors[r.mood!];
+    final moodColor = entry.mood == null ? null : _moodColors[entry.mood!];
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(14),
@@ -161,11 +112,11 @@ class _EntryCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
-                switch (r.type) {
-                  'diary' => Icons.edit_note,
-                  'quick' => Icons.bolt,
-                  'todo' => Icons.check_circle_outline,
-                  _ => Icons.sticky_note_2_outlined,
+                switch (entry.type) {
+                  EntryType.diary => Icons.edit_note,
+                  EntryType.quick => Icons.bolt,
+                  EntryType.todo => Icons.check_circle_outline,
+                  EntryType.note => Icons.sticky_note_2_outlined,
                 },
                 color: Theme.of(context).colorScheme.primary,
               ),
@@ -179,7 +130,7 @@ class _EntryCard extends StatelessWidget {
                     children: [
                       Expanded(
                         child: Text(
-                          r.title.isEmpty ? '(无标题)' : r.title,
+                          entry.title.isEmpty ? '(无标题)' : entry.title,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context)
@@ -192,14 +143,16 @@ class _EntryCard extends StatelessWidget {
                         Container(
                           width: 10,
                           height: 10,
-                          decoration:
-                              BoxDecoration(color: moodColor, shape: BoxShape.circle),
+                          decoration: BoxDecoration(
+                            color: moodColor,
+                            shape: BoxShape.circle,
+                          ),
                         ),
                     ],
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    r.plainText.isEmpty ? '(无正文)' : r.plainText,
+                    entry.plainText.isEmpty ? '(无正文)' : entry.plainText,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.bodyMedium,
@@ -207,10 +160,10 @@ class _EntryCard extends StatelessWidget {
                   const SizedBox(height: 6),
                   Row(
                     children: [
-                      _Chip(label: _typeLabels[r.type] ?? r.type),
-                      if (r.notebookName != null) ...[
+                      _Chip(label: entry.type.label),
+                      if (entry.notebookName != null) ...[
                         const SizedBox(width: 6),
-                        _Chip(label: r.notebookName!),
+                        _Chip(label: entry.notebookName!),
                       ],
                     ],
                   ),
@@ -267,7 +220,8 @@ class _EmptyView extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(Icons.spa_outlined,
-              size: 56, color: Theme.of(context).colorScheme.primary.withAlpha(120)),
+              size: 56,
+              color: Theme.of(context).colorScheme.primary.withAlpha(120)),
           const SizedBox(height: 12),
           Text('还没有记录', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 4),
