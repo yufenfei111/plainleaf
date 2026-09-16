@@ -1,7 +1,9 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -33,6 +35,9 @@ class _EditorPageState extends ConsumerState<EditorPage> {
 
   late final TimelineRepository _repo = ref.read(timelineRepositoryProvider);
 
+  final _picker = ImagePicker();
+  List<_AttachedImage> _images = const [];
+
   int? _id;
   String _status = 'draft';
   bool _loading = true;
@@ -57,6 +62,7 @@ class _EditorPageState extends ConsumerState<EditorPage> {
       _status = row.status;
       _titleCtrl.text = row.title;
       _controller = _controllerFromDelta(row.contentDelta);
+      await _loadImages(row.id);
     } else {
       // 新建：先落一条草稿拿 id（保证防抖更新始终有稳定主键）
       _controller = QuillController.basic();
@@ -67,6 +73,47 @@ class _EditorPageState extends ConsumerState<EditorPage> {
       ));
     }
     if (mounted) setState(() => _loading = false);
+  }
+
+  Future<void> _loadImages(int entryId) async {
+    final list = await ref.read(dbProvider).assetsDao.byEntry(entryId);
+    if (!mounted) return;
+    setState(() {
+      _images = [
+        for (final a in list) _AttachedImage(assetId: a.id, relPath: a.relPath),
+      ];
+    });
+  }
+
+  /// 拍照或选图 → 复制进私有目录 + assets 落库（W4，issue #7）
+  Future<void> _pickAndAttach(ImageSource source) async {
+    if (_id == null) return;
+    final xFile = await _picker.pickImage(source: source, imageQuality: 90);
+    if (xFile == null) return;
+    try {
+      final assetId = await ref
+          .read(timelineRepositoryProvider)
+          .attachImage(_id!, xFile.path);
+      if (!mounted) return;
+      setState(() {
+        _images = [
+          ..._images,
+          _AttachedImage(assetId: assetId, localPath: xFile.path),
+        ];
+      });
+    } on Exception catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('图片挂接失败：$error')),
+        );
+      }
+    }
+  }
+
+  Future<void> _detachImage(_AttachedImage img) async {
+    await ref.read(dbProvider).assetsDao.softDelete(img.assetId);
+    if (!mounted) return;
+    setState(() => _images = _images.where((i) => i != img).toList());
   }
 
   QuillController _controllerFromDelta(String deltaJson) {
@@ -215,6 +262,8 @@ class _EditorPageState extends ConsumerState<EditorPage> {
               ),
             ),
             const Divider(height: 1),
+            _ImageStrip(images: _images, onPick: _pickAndAttach, onRemove: _detachImage),
+            const Divider(height: 1),
             Expanded(
               child: QuillEditor.basic(
                 controller: controller,
@@ -226,6 +275,111 @@ class _EditorPageState extends ConsumerState<EditorPage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// 编辑器附件条上的图片视图
+class _AttachedImage {
+  const _AttachedImage({required this.assetId, this.relPath, this.localPath});
+
+  final int assetId;
+  final String? relPath;
+  final String? localPath;
+}
+
+/// 图片附件条（W4 附件条模式，issue #7；quill 内嵌混排按深坑预案延后，W6 统一缩略图管线）
+class _ImageStrip extends StatelessWidget {
+  const _ImageStrip({
+    required this.images,
+    required this.onPick,
+    required this.onRemove,
+  });
+
+  final List<_AttachedImage> images;
+  final Future<void> Function(ImageSource source) onPick;
+  final Future<void> Function(_AttachedImage image) onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 96,
+      child: Row(
+        children: [
+          IconButton(
+            tooltip: '拍照',
+            icon: const Icon(Icons.photo_camera_outlined),
+            onPressed: () => onPick(ImageSource.camera),
+          ),
+          IconButton(
+            tooltip: '相册选图',
+            icon: const Icon(Icons.photo_library_outlined),
+            onPressed: () => onPick(ImageSource.gallery),
+          ),
+          Expanded(
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              children: [
+                for (final img in images)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: Stack(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: _ImageTile(image: img),
+                        ),
+                        Positioned(
+                          right: 0,
+                          top: 0,
+                          child: GestureDetector(
+                            onTap: () => onRemove(img),
+                            child: Container(
+                              decoration: const BoxDecoration(
+                                color: Colors.black54,
+                                shape: BoxShape.circle,
+                              ),
+                              padding: const EdgeInsets.all(2),
+                              child: const Icon(
+                                Icons.close,
+                                size: 14,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ImageTile extends StatelessWidget {
+  const _ImageTile({required this.image});
+
+  final _AttachedImage image;
+
+  @override
+  Widget build(BuildContext context) {
+    final path = image.localPath ?? image.relPath;
+    if (path == null) return const SizedBox(width: 72, height: 72);
+    return Image.file(
+      File(path),
+      width: 72,
+      height: 72,
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) => const SizedBox(
+        width: 72,
+        height: 72,
+        child: Icon(Icons.broken_image_outlined),
       ),
     );
   }

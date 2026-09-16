@@ -1,8 +1,11 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../domain/entities/timeline_entry.dart';
+import '../../../../app/providers.dart';
 import 'providers/timeline_providers.dart';
 
 /// 时间轴首页（W3：编辑器/草稿箱/回收站全链路接入）
@@ -99,13 +102,13 @@ class _TimelineList extends StatelessWidget {
   }
 }
 
-class _EntryCard extends StatelessWidget {
+class _EntryCard extends ConsumerWidget {
   const _EntryCard(this.entry);
 
   final TimelineEntry entry;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final moodColor = entry.mood == null ? null : _moodColors[entry.mood!];
     return Card(
       // 点击卡片进入编辑器继续编辑（W3 记录内核）
@@ -117,7 +120,7 @@ class _EntryCard extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 图文卡片左侧：首图占位（W4 图片管线接入后显示真实缩略图）
+              // 图文卡片左侧：首图缩略图（W4 真实图片；无图时类型图标）
               Container(
                 width: 52,
                 height: 52,
@@ -125,15 +128,36 @@ class _EntryCard extends StatelessWidget {
                   color: Theme.of(context).colorScheme.primaryContainer,
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(
-                  switch (entry.type) {
-                    EntryType.diary => Icons.edit_note,
-                    EntryType.quick => Icons.bolt,
-                    EntryType.todo => Icons.check_circle_outline,
-                    EntryType.note => Icons.sticky_note_2_outlined,
-                  },
-                  color: Theme.of(context).colorScheme.primary,
-                ),
+                clipBehavior: Clip.antiAlias,
+                child: entry.firstAssetRelPath != null
+                    ? FutureBuilder<File>(
+                        future: ref
+                            .read(mediaStorageProvider)
+                            .resolve(entry.firstAssetRelPath!),
+                        builder: (context, snap) {
+                          if (snap.connectionState != ConnectionState.done ||
+                              !snap.hasData ||
+                              !snap.data!.existsSync()) {
+                            return const Center(
+                              child: SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              ),
+                            );
+                          }
+                          return Image.file(snap.data!, fit: BoxFit.cover);
+                        },
+                      )
+                    : Icon(
+                        switch (entry.type) {
+                          EntryType.diary => Icons.edit_note,
+                          EntryType.quick => Icons.bolt,
+                          EntryType.todo => Icons.check_circle_outline,
+                          EntryType.note => Icons.sticky_note_2_outlined,
+                        },
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
               ),
               const SizedBox(width: 12),
               Expanded(
