@@ -24,6 +24,13 @@
 - 统一异常层：PlainLeafException / DatabaseException（错误三层透传第一层）
 - 测试：test/repository_test.dart（双写/软删/领域映射 3 例），全套 7 例全绿
 
+### Added（阶段 1 · W3 记录内核，2026-09-16）
+- flutter_quill 11.6 富文本编辑器：/editor 全屏编辑页，500ms 防抖自动保存，AppBar 保存状态提示；Delta JSON 持久化（content_delta）+ 纯文本派生（plain_text）
+- 记录生命周期：新建即落草稿 → 「完成」发布；EntryStatus（draft/normal/archived）全链路；草稿箱页（/drafts）
+- 回收站（/trash）：软删除/恢复单事务双写 FTS；30 天过期启动清理（purgeExpiredTrash）
+- 路由工厂化 buildAppRouter()（测试隔离）；时间轴入口：FAB 新建、卡片点击编辑、AppBar 草稿箱/回收站
+- 测试：test/lifecycle_test.dart 4 例（更新双写/草稿流转/回收恢复/30 天清理），全套 12 例
+
 ## [0.1.0] - unreleased
 
 - M1 目标（2026-10-11）：MVP 记录内核（编辑器/图片管线/搜索/备份），发布 v0.1.0-alpha tag
