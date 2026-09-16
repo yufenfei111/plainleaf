@@ -16,8 +16,8 @@
 | 7 | FTS5 虚表 + searchEntryIds 助手（计划书 §7.2，超出清单最小补全） | ✅ | entries_dao.dart + db_smoke FTS 断言 |
 | 8 | 可演示构建 apk --debug（checklist 周日项） | ✅ | app-debug.apk 150.1MB，aapt2 核验通过 |
 | 9 | git 分批提交（Conventional Commits） | ✅ 8 commits | dev 分支 b95add2…（feat×4/test/chore/docs） |
-| 10 | push dev + PR 合 main + CI 首跑（checklist） | ⏳ 待执行 | 推送命令含临时文件删除被安全审批拦截，需重新执行（见 §三 步骤 1） |
-| 11 | 真机走查 5 Tab（checklist Day7 / Day1 真机项） | ⬜ 需用户 | 需 USB 连线或安装 APK |
+| 10 | push dev + PR 合 main + CI 首跑（checklist） | ✅ 2026-09-16 | dev 推至 9417098；PR #17 已合并 main（e209909）；dev 与 main 双侧 CI 全绿（analyze --fatal-infos + test） |
+| 11 | 真机走查 5 Tab（checklist Day7 / Day1 真机项） | ⬜ 需用户 | 需 USB 连线或安装 APK（代码侧一切就绪） |
 
 ## 二、关键决策与假设记录
 
@@ -32,8 +32,7 @@
 
 ## 三、接手即用：下一步操作清单
 
-1. **完成推送与合并**（本轮被安全审批拦下的动作，逐条独立执行）：
-   ```powershell
+1. ~~完成推送与合并~~ **已完成（2026-09-16）**：dev 已推送，PR #17 已合并 main，dev 与 main 双侧 CI 首跑全绿。历史记录：推送一度因安全审批超时被拦，后以干净命令完成。```powershell
    cd C:\Users\雨\Desktop\豆包\相册记事本项目\plainleaf
    git push origin dev
    # GitHub 网页或 gh CLI 建 PR：dev → main，合并后 Actions 首跑（analyze --fatal-infos + test）
@@ -47,6 +46,7 @@
 
 ## 四、遗留问题（阻塞项均非代码）
 
-- push/PR/CI 首跑未完成（安全审批拦截，非技术问题）。
-- 真机走查需用户手机。
+- ~~push/PR/CI 首跑未完成~~ 已闭环（PR #17 合并 + 双侧 CI 绿）。
+- 真机走查需用户手机（唯一遗留）。
+- settings_kv 五字段出入已按复核意见修复（9417098）。
 - Moodiary 竞品体验（指挥文档决策点 4）未启动——属 W13 前可选项，已记录不入队。
