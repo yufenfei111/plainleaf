@@ -18,6 +18,12 @@
 - 仓库基建：Issue 模板（背景/验收/≤2h 拆分）、GitHub Actions CI（analyze + test）、本 CHANGELOG
 - 静态时间轴页：日期锚点分组 + 图文卡片 + 心情色点 + 空态/加载态/错误态三态齐全
 
+### Added（阶段 1 · W2 Repository 层，2026-09-16）
+- Repository 分层：timeline/study/notebooks 三组「领域实体 + 接口 + 本地 Drift 实现」，UI 全量迁移 Riverpod AsyncValue（features/*/presentation/providers/）
+- FTS5 事务双写：EntriesDao.saveEntry / softDelete 单事务同步维护 entries_fts（不用 trigger，§4.3 红线）；种子数据重构为单事务幂等写入
+- 统一异常层：PlainLeafException / DatabaseException（错误三层透传第一层）
+- 测试：test/repository_test.dart（双写/软删/领域映射 3 例），全套 7 例全绿
+
 ## [0.1.0] - unreleased
 
 - M1 目标（2026-10-11）：MVP 记录内核（编辑器/图片管线/搜索/备份），发布 v0.1.0-alpha tag
