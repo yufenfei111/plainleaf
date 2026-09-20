@@ -39,6 +39,7 @@ dependencies:
   # W4 图片输入：系统相册/拍照（系统选择器免运行时权限）；压缩/缩略图 W6
   image_picker: ^1.1.0
   path: ^1.9.0                   # MediaStorage 路径拼接（传递依赖显式声明）
+  archive: ^3.6.0                # .plbk 备份包 zip 打包（清单基线阶段 4 组，W5 预支）
 
 dev_dependencies:
   flutter_test:
