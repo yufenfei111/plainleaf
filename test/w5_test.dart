@@ -5,7 +5,9 @@ import 'package:path_provider_platform_interface/path_provider_platform_interfac
 import 'package:plainleaf/app/providers.dart';
 import 'package:plainleaf/core/db/database.dart';
 import 'package:plainleaf/core/exporter/backup_service.dart';
+import 'package:plainleaf/core/errors/app_exception.dart';
 import 'package:plainleaf/core/exporter/markdown_exporter.dart';
+import 'package:plainleaf/core/storage/media_storage.dart';
 import 'package:plainleaf/features/timeline/data/timeline_repository_impl.dart';
 import 'package:plainleaf/features/timeline/domain/entities/timeline_entry.dart';
 import 'package:uuid/uuid.dart';
@@ -88,6 +90,58 @@ void main() {
       await repo.saveEntry(EntryDraft(
           title: '归入', plainText: '内容', notebookId: nbId));
       expect(await db.notebooksDao.countEntries(nbId), 1);
+    });
+
+    test('重命名 / 软删后退出列表 / insertNotebook 直插', () async {
+      const uuidGen = Uuid();
+      final id = await db.notebooksDao.create(
+          uuid: uuidGen.v4(), name: '临时本', space: 'custom');
+
+      await db.notebooksDao.rename(id, '改名后');
+      var row = await (db.select(db.notebooks)
+            ..where((n) => n.id.equals(id)))
+          .getSingle();
+      expect(row.name, '改名后');
+      expect(row.version, 2, reason: '重命名应递增 version');
+
+      await db.notebooksDao.softDelete(id);
+      row = await (db.select(db.notebooks)..where((n) => n.id.equals(id)))
+          .getSingle();
+      expect(row.deleted, isTrue);
+
+      // 软删后不出现在 watch 流里（数据红线：删除一律软删除）
+      final streamed = await db.notebooksDao.watchNotebooks().first;
+      expect(streamed.any((n) => n.id == id), isFalse);
+
+      // insertNotebook：直接插 Companion（name 走表默认 '未命名'）
+      final inserted = await db.notebooksDao.insertNotebook(
+        NotebooksCompanion.insert(uuid: uuidGen.v4()),
+      );
+      expect(inserted, greaterThan(0));
+    });
+  });
+
+  group('媒体存储与异常层（core 覆盖率补齐）', () {
+    test('deleteRel：物理删除已导入的媒体文件', () async {
+      final storage = MediaStorage();
+      final tmp = Directory.systemTemp.createTempSync('plainleaf_src');
+      final src = File('${tmp.path}/a.jpg')..writeAsBytesSync([1, 2, 3, 4]);
+      addTearDown(() => tmp.deleteSync(recursive: true));
+
+      final rel = await storage.importFile(src.path);
+      final abs = await storage.resolve(rel);
+      expect(abs.existsSync(), isTrue);
+
+      await storage.deleteRel(rel);
+      expect(abs.existsSync(), isFalse);
+    });
+
+    test('DatabaseException 携带消息与原始异常', () async {
+      final cause = Exception('底层炸了');
+      final error = DatabaseException('保存失败', cause: cause);
+      expect(error.message, '保存失败');
+      expect(error.cause, cause);
+      expect('$error', '保存失败');
     });
   });
 
