@@ -64,6 +64,26 @@
 - flutter build apk --debug：通过（build/app/outputs/flutter-apk/app-debug.apk）
 - 遗留：真机走查（10 项清单见 verification-w5.md）待执行；iOS 本期不纳入
 
+### Fixed（2026-09-20 · 真机反馈）
+- **编辑器打开记录正文空白，且保存会清空正文（数据丢失级）**：contentDelta 为空串时
+  jsonDecode 抛异常后直接给空文档，此时输入标题或点「完成」触发的 flush 会用空文档覆盖
+  plainText。改为 Delta 为空/非法/无实质内容时用 plainText 回填；种子数据补齐 contentDelta
+- 损坏图片会让解码器抛 RangeError（Error 而非 Exception），原 `on Exception` 兜不住
+  ——等价"挂一张坏图就崩"。改为 `on Object` 降级 + 管线内统一转 FormatException
+
+### Added（阶段 2 · W6 图片管线与相册，2026-09-20）
+- 两级缩略图管线（§4.3）：thumb 长边 400/q80、medium 长边 1600/q82，转码跑 `Isolate.run`
+  不占 UI 线程；烘焙 EXIF 方向；小图不放大；顺带回填 width/height/hash_sha256
+- 时间轴卡片性能改造：优先渲染 thumb + `cacheWidth` 按显示尺寸解码；去掉逐卡 FutureBuilder
+  （新增 supportDirProvider 顶层取一次路径）；加视口缓冲 `ScrollCacheExtent.viewport(1)`
+- 相册页（W6 主线）：按 §4.2 三层结构实现，CustomScrollView + SliverGrid 月分组网格，
+  分页（首屏 60，距底 500px 续拉），空/加载/错误三态齐全
+- 存储约定统一：相对路径以支持目录为基准（media/…、thumb/…、medium/…），兼容 W4 旧数据
+- 备份包 plbk/1 → plbk/2：打包 media + thumb，排除可重算的 medium；verify 兼容两代
+- 依赖：image ^4.2、crypto ^3.0
+- 测试：test/thumbnail_test.dart 5 例（缩略图尺寸/小图不放大/attach 回填/backfill/分页）
+  + test/editor_fallback_test.dart 1 例回归；全套 38/38，core 手写覆盖率 73.5% → 77.2%
+
 ## [0.1.0] - unreleased
 
 - M1 目标（2026-10-11）：MVP 记录内核（编辑器/图片管线/搜索/备份），发布 v0.1.0-alpha tag
