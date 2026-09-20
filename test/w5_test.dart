@@ -156,7 +156,8 @@ void main() {
 
       final manifest = await service.verify(plbk);
       expect(manifest['app'], 'plainleaf');
-      expect(manifest['format'], 'plbk/1');
+      // W6 起含 thumb 目录，格式升到 plbk/2（verify 同时兼容 plbk/1）
+      expect(manifest['format'], 'plbk/2');
       // eslint 免误报：实际值可能是 int
       // ignore: avoid_print
       print('manifest schemaVersion = ${manifest['schemaVersion']}');
