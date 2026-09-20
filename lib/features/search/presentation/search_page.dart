@@ -142,6 +142,36 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     );
   }
 
+  /// 查询词（去 FTS 的前缀星号，供高亮使用）
+  List<String> get _terms => _queryCtrl.text
+      .trim()
+      .split(RegExp(r'\s+'))
+      .where((w) => w.isNotEmpty)
+      .map((w) => w.endsWith('*') ? w.substring(0, w.length - 1) : w)
+      .toList();
+
+  Widget _hitText(
+    BuildContext context,
+    String text, {
+    required int maxLines,
+    TextStyle? base,
+  }) {
+    final body = base ??
+        Theme.of(context).textTheme.bodyMedium ??
+        const TextStyle(fontSize: 14);
+    final hit = body.copyWith(
+      color: Theme.of(context).colorScheme.primary,
+      fontWeight: FontWeight.w600,
+      backgroundColor:
+          Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.45),
+    );
+    return Text.rich(
+      TextSpan(children: buildHighlightSpans(text, _terms, base: body, hit: hit)),
+      maxLines: maxLines,
+      overflow: TextOverflow.ellipsis,
+    );
+  }
+
   Widget _buildBody() {
     if (_error != null) {
       return Center(child: Text('搜索失败：$_error'));
@@ -162,22 +192,64 @@ class _SearchPageState extends ConsumerState<SearchPage> {
         final h = _hits[i];
         return ListTile(
           leading: const Icon(Icons.sticky_note_2_outlined),
-          title: Text(
-            h.title.isEmpty ? '(无标题)' : h.title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          subtitle: Text(
-            h.plainText,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
+          title: _hitText(context, h.title.isEmpty ? '(无标题)' : h.title,
+              maxLines: 1, base: Theme.of(context).textTheme.titleMedium),
+          subtitle: _hitText(context, h.plainText,
+              maxLines: 2, base: Theme.of(context).textTheme.bodySmall),
           trailing: Text(_typeLabels[h.type] ?? h.type),
           onTap: () => context.push('/editor?id=${h.id}'),
         );
       },
     );
   }
+}
+
+/// 关键词高亮切分（§5.3 验收项：搜索高亮）
+/// 按命中区间把文本切成普通段/高亮段；terms 为空或无命中时返回单段，
+/// 避免不必要的 RichText 拆分。大小写不敏感，重叠区间会合并。
+List<InlineSpan> buildHighlightSpans(
+  String text,
+  List<String> terms, {
+  required TextStyle base,
+  required TextStyle hit,
+}) {
+  final lower = text.toLowerCase();
+  final ranges = <List<int>>[];
+  for (final term in terms) {
+    if (term.isEmpty) continue;
+    final needle = term.toLowerCase();
+    var idx = lower.indexOf(needle);
+    while (idx != -1) {
+      ranges.add([idx, idx + term.length]);
+      idx = lower.indexOf(needle, idx + term.length);
+    }
+  }
+  if (ranges.isEmpty) return <InlineSpan>[TextSpan(text: text, style: base)];
+
+  ranges.sort((a, b) => a[0].compareTo(b[0]));
+  final merged = <List<int>>[ranges.first];
+  for (final r in ranges.skip(1)) {
+    final last = merged.last;
+    if (r[0] <= last[1]) {
+      last[1] = r[1] > last[1] ? r[1] : last[1];
+    } else {
+      merged.add(r);
+    }
+  }
+
+  final spans = <InlineSpan>[];
+  var pos = 0;
+  for (final r in merged) {
+    if (r[0] > pos) {
+      spans.add(TextSpan(text: text.substring(pos, r[0]), style: base));
+    }
+    spans.add(TextSpan(text: text.substring(r[0], r[1]), style: hit));
+    pos = r[1];
+  }
+  if (pos < text.length) {
+    spans.add(TextSpan(text: text.substring(pos), style: base));
+  }
+  return spans;
 }
 
 class _SearchHit {
