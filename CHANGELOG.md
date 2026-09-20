@@ -37,6 +37,18 @@
 - AssetsDao：attach/byEntry/softDelete；Repository 附件能力（attachImage/firstImagePath，构造注入 AssetsDao+MediaStorage）
 - 测试：test/media_test.dart 3 例（导入解析/挂接取图/无图与软删语义），全套 15 例
 
+### Added（阶段 1 · W5 组织与备份，2026-09-20）
+- 笔记本管理（#10）：NotebooksDao.create 自定义本、条目计数、按空间分组
+- 标签管理（#11）：TagsDao 创建/重命名/软删/打标/查询；tags.parent_id 多级标签预留，schemaVersion 1 → 2，
+  走 Drift MigrationStep.addColumn（+ onCreate 裸库补列防御），迁移测试覆盖
+- FTS5 搜索页（#12）：/search 全屏检索 + 类型过滤；CJK 前缀化预处理（中文单 token 需转 '学习*' 才命中）
+- 备份包（#13）：BackupService 用 VACUUM INTO 一致性快照打 .plbk（db + media + manifest.json），
+  verify 校验格式版本；**设置页补「从备份包恢复」入口**（选包 → 二次确认 → 自动预备份 → 覆盖 → 提示重启），
+  此前仅服务层有实现、M1「备份→恢复→一致」链路是断开的
+- Markdown 导出（#14）：已发布记录导出为单 .md，排除草稿与软删（M1 形态仅控制台预览，落文件排 W6）
+- 依赖：archive ^3.6.0（zip 打包）
+- 测试：test/w5_test.dart 7 例 + test/migration_test.dart 1 例，合计 23 例（本机 flutter_tester 无法启动，待 CI/开发机复核）
+
 ## [0.1.0] - unreleased
 
 - M1 目标（2026-10-11）：MVP 记录内核（编辑器/图片管线/搜索/备份），发布 v0.1.0-alpha tag
