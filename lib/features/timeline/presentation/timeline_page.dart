@@ -23,6 +23,11 @@ class TimelinePage extends ConsumerWidget {
         title: const Text('素页'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.search),
+            tooltip: '搜索',
+            onPressed: () => context.push('/search'),
+          ),
+          IconButton(
             icon: const Icon(Icons.edit_note),
             tooltip: '草稿箱',
             onPressed: () => context.push('/drafts'),
