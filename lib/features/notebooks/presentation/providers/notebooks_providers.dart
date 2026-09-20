@@ -14,3 +14,24 @@ final notebookRepositoryProvider = Provider<NotebookRepository>((ref) {
 final notebooksStreamProvider = StreamProvider<List<NotebookItem>>((ref) {
   return ref.watch(notebookRepositoryProvider).watchNotebooks();
 });
+
+/// 标签行视图（避免 UI 直接命名 Drift 生成类——分层红线）
+class TagItem {
+  const TagItem({required this.id, required this.name, this.parentId});
+
+  final int id;
+  final String name;
+  final int? parentId;
+}
+
+/// 标签流（W5 标签管理）
+final tagsStreamProvider = StreamProvider<List<TagItem>>((ref) {
+  return ref
+      .watch(dbProvider)
+      .tagsDao
+      .watchAll()
+      .map((rows) => [
+            for (final t in rows)
+              TagItem(id: t.id, name: t.name, parentId: t.parentId),
+          ]);
+});
