@@ -61,7 +61,12 @@ class _EditorPageState extends ConsumerState<EditorPage> {
       _id = row.id;
       _status = row.status;
       _titleCtrl.text = row.title;
-      _controller = _controllerFromDelta(row.contentDelta);
+      // 兜底：历史数据与种子只有 plainText、contentDelta 为空，
+      // 若不回填，正文会显示空白；更危险的是此时触发保存会把正文清空。
+      _controller = _controllerFromDelta(
+        row.contentDelta,
+        fallbackText: row.plainText,
+      );
       await _loadImages(row.id);
     } else {
       // 新建：先落一条草稿拿 id（保证防抖更新始终有稳定主键）
@@ -116,19 +121,39 @@ class _EditorPageState extends ConsumerState<EditorPage> {
     setState(() => _images = _images.where((i) => i != img).toList());
   }
 
-  QuillController _controllerFromDelta(String deltaJson) {
+  /// Delta → 控制器；解析不出实质内容时用 [fallbackText] 回填。
+  /// 兜底场景：种子数据、W3 之前落库的记录、以及任何只写了 plainText 的条目
+  /// （contentDelta 为空串 → jsonDecode 抛 FormatException → 若直接给空文档，
+  /// 用户点「完成」时 flush 保存就会把正文覆盖成空——属于数据丢失级缺陷）。
+  QuillController _controllerFromDelta(
+    String deltaJson, {
+    String fallbackText = '',
+  }) {
     try {
       final decoded = jsonDecode(deltaJson);
       if (decoded is List && decoded.isNotEmpty) {
-        return QuillController(
-          document: Document.fromJson(decoded),
-          selection: const TextSelection.collapsed(offset: 0),
-        );
+        final doc = Document.fromJson(decoded);
+        // Delta 能解析但内容为空（如只有换行）时同样回退
+        if (doc.toPlainText().trim().isNotEmpty || fallbackText.trim().isEmpty) {
+          return QuillController(
+            document: doc,
+            selection: const TextSelection.collapsed(offset: 0),
+          );
+        }
       }
     } on FormatException {
-      // 旧数据/空数据：按空文档打开
+      // 空串 / 非法 JSON：落到下面的纯文本兜底
     }
-    return QuillController.basic();
+    return _controllerFromPlainText(fallbackText);
+  }
+
+  QuillController _controllerFromPlainText(String text) {
+    final doc = Document();
+    if (text.isNotEmpty) doc.insert(0, text);
+    return QuillController(
+      document: doc,
+      selection: const TextSelection.collapsed(offset: 0),
+    );
   }
 
   String _deltaJson() => jsonEncode(_controller!.document.toDelta().toList());

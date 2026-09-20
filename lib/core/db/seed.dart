@@ -1,7 +1,15 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart';
 import 'package:uuid/uuid.dart';
 
 import 'database.dart';
+
+/// 纯文本 → flutter_quill Delta JSON（最小形态：单个 insert 操作）
+/// 种子数据必须同时写 plainText 与 contentDelta，否则编辑器打开是空白
+/// （编辑器以 Delta 为准；plainText 只是派生列与列表摘要）。
+String seedDeltaOf(String text) =>
+    jsonEncode(<Map<String, Object>>[<String, Object>{'insert': '$text\n'}]);
 
 /// 演示种子数据：整只种子在单个事务内写入（条目含 FTS 双写），
 /// 幂等标记 settings_kv.seed_v1 与数据同事务落库——要么全有，要么全无。
@@ -45,6 +53,8 @@ class DemoSeed {
           type: const Value('diary'),
           title: const Value('阶段 0 启动'),
           plainText: const Value('空壳工程跑通了：五 Tab + 数据库就位。'),
+          contentDelta:
+              Value(seedDeltaOf('空壳工程跑通了：五 Tab + 数据库就位。')),
           mood: const Value(4),
           entryDate: Value(now),
         ),
@@ -58,6 +68,8 @@ class DemoSeed {
           type: const Value('note'),
           title: const Value('高数课堂笔记'),
           plainText: const Value('级数收敛性判定：比较判别法、比值判别法。'),
+          contentDelta:
+              Value(seedDeltaOf('级数收敛性判定：比较判别法、比值判别法。')),
           mood: const Value(3),
           entryDate: Value(now.subtract(const Duration(days: 1))),
         ),
@@ -71,6 +83,7 @@ class DemoSeed {
           type: const Value('quick'),
           title: const Value('速记'),
           plainText: const Value('取快递：菜鸟驿站 3-2-1102。'),
+          contentDelta: Value(seedDeltaOf('取快递：菜鸟驿站 3-2-1102。')),
           entryDate: Value(now.subtract(const Duration(days: 2))),
         ),
         ftsTitle: '速记',
@@ -83,6 +96,7 @@ class DemoSeed {
           type: const Value('todo'),
           title: const Value('学习待办'),
           plainText: const Value('复习 W1 Dart 基础。'),
+          contentDelta: Value(seedDeltaOf('复习 W1 Dart 基础。')),
           entryDate: Value(now.subtract(const Duration(days: 3))),
         ),
         ftsTitle: '学习待办',
