@@ -1,8 +1,10 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:path/path.dart' as p;
 
 import '../domain/entities/timeline_entry.dart';
 import '../../../../app/providers.dart';
@@ -17,6 +19,7 @@ class TimelinePage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final timeline = ref.watch(timelineStreamProvider);
+    final root = ref.watch(supportDirProvider).valueOrNull;
 
     return Scaffold(
       appBar: AppBar(
@@ -47,7 +50,7 @@ class TimelinePage extends ConsumerWidget {
       body: timeline.when(
         data: (entries) => entries.isEmpty
             ? const _EmptyView()
-            : _TimelineList(entries: entries),
+            : _TimelineList(entries: entries, root: root),
         loading: () => const _LoadingView(),
         error: (error, _) => _ErrorView(error: '$error'),
       ),
@@ -65,9 +68,12 @@ const _moodColors = <int, Color>{
 };
 
 class _TimelineList extends StatelessWidget {
-  const _TimelineList({required this.entries});
+  const _TimelineList({required this.entries, this.root});
 
   final List<TimelineEntry> entries;
+
+  /// App 支持目录（相对路径的解析基准）；为 null 表示尚未取到
+  final String? root;
 
   @override
   Widget build(BuildContext context) {
@@ -83,6 +89,9 @@ class _TimelineList extends StatelessWidget {
 
     return ListView.builder(
       padding: const EdgeInsets.only(top: 4, bottom: 96),
+      // 预渲染视口外的缓冲：滑动时提前备好下一屏，减少"边滑边建"的抖动
+      // （Flutter 3.41+ 用 ScrollCacheExtent；这里按视口倍数给，比写死像素更适配大屏）
+      scrollCacheExtent: const ScrollCacheExtent.viewport(1.0),
       itemCount: keys.length,
       itemBuilder: (context, i) {
         final key = keys[i];
@@ -99,7 +108,7 @@ class _TimelineList extends StatelessWidget {
                     ),
               ),
             ),
-            for (final r in groups[key]!) _EntryCard(r),
+            for (final r in groups[key]!) _EntryCard(r, root: root),
           ],
         );
       },
@@ -107,14 +116,50 @@ class _TimelineList extends StatelessWidget {
   }
 }
 
-class _EntryCard extends ConsumerWidget {
-  const _EntryCard(this.entry);
+/// 列表缩略图（W6 性能改造）
+/// 三处关键点，缺一个都会让滑动掉帧：
+/// 1. **优先用 thumb 而不是原图**：52dp 的框里解码 4000×3000 的原图，
+///    单张就吃掉几十 MB 解码内存，是列表卡顿的头号来源；
+/// 2. **cacheWidth 限制解码尺寸**：即使回退到原图，也只按显示尺寸×DPR 解码，
+///    不让引擎把整张图摊开；
+/// 3. **路径同步拼接**：root 由上层 provider 给，卡片内不再发起 Future。
+class _ThumbTile extends StatelessWidget {
+  const _ThumbTile({required this.rel, required this.root, required this.size});
+
+  final String rel;
+  final String? root;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    if (root == null) {
+      return const SizedBox.expand();
+    }
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    return Image.file(
+      File(p.join(root!, rel)),
+      fit: BoxFit.cover,
+      // 按显示尺寸解码（×设备像素比），避免解码整张原图
+      cacheWidth: (size * dpr).round(),
+      // 解码失败/文件缺失不再抛红屏，回退占位色块
+      errorBuilder: (_, _, _) => const SizedBox.expand(),
+    );
+  }
+}
+
+class _EntryCard extends StatelessWidget {
+  const _EntryCard(this.entry, {this.root});
 
   final TimelineEntry entry;
 
+  /// App 支持目录（null 时图片位显示占位色块，不发起异步）
+  final String? root;
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final moodColor = entry.mood == null ? null : _moodColors[entry.mood!];
+    // 有缩略图用缩略图，没有（W4 期历史数据）回退原图，但解码尺寸仍受限
+    final thumbRel = entry.firstAssetThumbPath ?? entry.firstAssetRelPath;
     return Card(
       // 点击卡片进入编辑器继续编辑（W3 记录内核）
       child: InkWell(
@@ -134,26 +179,8 @@ class _EntryCard extends ConsumerWidget {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 clipBehavior: Clip.antiAlias,
-                child: entry.firstAssetRelPath != null
-                    ? FutureBuilder<File>(
-                        future: ref
-                            .read(mediaStorageProvider)
-                            .resolve(entry.firstAssetRelPath!),
-                        builder: (context, snap) {
-                          if (snap.connectionState != ConnectionState.done ||
-                              !snap.hasData ||
-                              !snap.data!.existsSync()) {
-                            return const Center(
-                              child: SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              ),
-                            );
-                          }
-                          return Image.file(snap.data!, fit: BoxFit.cover);
-                        },
-                      )
+                child: thumbRel != null
+                    ? _ThumbTile(rel: thumbRel, root: root, size: 52)
                     : Icon(
                         switch (entry.type) {
                           EntryType.diary => Icons.edit_note,
