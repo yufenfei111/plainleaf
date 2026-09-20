@@ -2618,6 +2618,17 @@ class $TagsTable extends Tags with TableInfo<$TagsTable, Tag> {
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _parentIdMeta = const VerificationMeta(
+    'parentId',
+  );
+  @override
+  late final GeneratedColumn<int> parentId = GeneratedColumn<int>(
+    'parent_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -2675,6 +2686,7 @@ class $TagsTable extends Tags with TableInfo<$TagsTable, Tag> {
     uuid,
     name,
     color,
+    parentId,
     createdAt,
     updatedAt,
     version,
@@ -2715,6 +2727,12 @@ class $TagsTable extends Tags with TableInfo<$TagsTable, Tag> {
       context.handle(
         _colorMeta,
         color.isAcceptableOrUnknown(data['color']!, _colorMeta),
+      );
+    }
+    if (data.containsKey('parent_id')) {
+      context.handle(
+        _parentIdMeta,
+        parentId.isAcceptableOrUnknown(data['parent_id']!, _parentIdMeta),
       );
     }
     if (data.containsKey('created_at')) {
@@ -2770,6 +2788,10 @@ class $TagsTable extends Tags with TableInfo<$TagsTable, Tag> {
         DriftSqlType.int,
         data['${effectivePrefix}color'],
       ),
+      parentId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}parent_id'],
+      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -2800,6 +2822,7 @@ class Tag extends DataClass implements Insertable<Tag> {
   final String uuid;
   final String name;
   final int? color;
+  final int? parentId;
   final DateTime createdAt;
   final DateTime updatedAt;
   final int version;
@@ -2809,6 +2832,7 @@ class Tag extends DataClass implements Insertable<Tag> {
     required this.uuid,
     required this.name,
     this.color,
+    this.parentId,
     required this.createdAt,
     required this.updatedAt,
     required this.version,
@@ -2822,6 +2846,9 @@ class Tag extends DataClass implements Insertable<Tag> {
     map['name'] = Variable<String>(name);
     if (!nullToAbsent || color != null) {
       map['color'] = Variable<int>(color);
+    }
+    if (!nullToAbsent || parentId != null) {
+      map['parent_id'] = Variable<int>(parentId);
     }
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
@@ -2838,6 +2865,9 @@ class Tag extends DataClass implements Insertable<Tag> {
       color: color == null && nullToAbsent
           ? const Value.absent()
           : Value(color),
+      parentId: parentId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(parentId),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
       version: Value(version),
@@ -2855,6 +2885,7 @@ class Tag extends DataClass implements Insertable<Tag> {
       uuid: serializer.fromJson<String>(json['uuid']),
       name: serializer.fromJson<String>(json['name']),
       color: serializer.fromJson<int?>(json['color']),
+      parentId: serializer.fromJson<int?>(json['parentId']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
       version: serializer.fromJson<int>(json['version']),
@@ -2869,6 +2900,7 @@ class Tag extends DataClass implements Insertable<Tag> {
       'uuid': serializer.toJson<String>(uuid),
       'name': serializer.toJson<String>(name),
       'color': serializer.toJson<int?>(color),
+      'parentId': serializer.toJson<int?>(parentId),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
       'version': serializer.toJson<int>(version),
@@ -2881,6 +2913,7 @@ class Tag extends DataClass implements Insertable<Tag> {
     String? uuid,
     String? name,
     Value<int?> color = const Value.absent(),
+    Value<int?> parentId = const Value.absent(),
     DateTime? createdAt,
     DateTime? updatedAt,
     int? version,
@@ -2890,6 +2923,7 @@ class Tag extends DataClass implements Insertable<Tag> {
     uuid: uuid ?? this.uuid,
     name: name ?? this.name,
     color: color.present ? color.value : this.color,
+    parentId: parentId.present ? parentId.value : this.parentId,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
     version: version ?? this.version,
@@ -2901,6 +2935,7 @@ class Tag extends DataClass implements Insertable<Tag> {
       uuid: data.uuid.present ? data.uuid.value : this.uuid,
       name: data.name.present ? data.name.value : this.name,
       color: data.color.present ? data.color.value : this.color,
+      parentId: data.parentId.present ? data.parentId.value : this.parentId,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       version: data.version.present ? data.version.value : this.version,
@@ -2915,6 +2950,7 @@ class Tag extends DataClass implements Insertable<Tag> {
           ..write('uuid: $uuid, ')
           ..write('name: $name, ')
           ..write('color: $color, ')
+          ..write('parentId: $parentId, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('version: $version, ')
@@ -2929,6 +2965,7 @@ class Tag extends DataClass implements Insertable<Tag> {
     uuid,
     name,
     color,
+    parentId,
     createdAt,
     updatedAt,
     version,
@@ -2942,6 +2979,7 @@ class Tag extends DataClass implements Insertable<Tag> {
           other.uuid == this.uuid &&
           other.name == this.name &&
           other.color == this.color &&
+          other.parentId == this.parentId &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
           other.version == this.version &&
@@ -2953,6 +2991,7 @@ class TagsCompanion extends UpdateCompanion<Tag> {
   final Value<String> uuid;
   final Value<String> name;
   final Value<int?> color;
+  final Value<int?> parentId;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   final Value<int> version;
@@ -2962,6 +3001,7 @@ class TagsCompanion extends UpdateCompanion<Tag> {
     this.uuid = const Value.absent(),
     this.name = const Value.absent(),
     this.color = const Value.absent(),
+    this.parentId = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.version = const Value.absent(),
@@ -2972,6 +3012,7 @@ class TagsCompanion extends UpdateCompanion<Tag> {
     required String uuid,
     required String name,
     this.color = const Value.absent(),
+    this.parentId = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.version = const Value.absent(),
@@ -2983,6 +3024,7 @@ class TagsCompanion extends UpdateCompanion<Tag> {
     Expression<String>? uuid,
     Expression<String>? name,
     Expression<int>? color,
+    Expression<int>? parentId,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
     Expression<int>? version,
@@ -2993,6 +3035,7 @@ class TagsCompanion extends UpdateCompanion<Tag> {
       if (uuid != null) 'uuid': uuid,
       if (name != null) 'name': name,
       if (color != null) 'color': color,
+      if (parentId != null) 'parent_id': parentId,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (version != null) 'version': version,
@@ -3005,6 +3048,7 @@ class TagsCompanion extends UpdateCompanion<Tag> {
     Value<String>? uuid,
     Value<String>? name,
     Value<int?>? color,
+    Value<int?>? parentId,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
     Value<int>? version,
@@ -3015,6 +3059,7 @@ class TagsCompanion extends UpdateCompanion<Tag> {
       uuid: uuid ?? this.uuid,
       name: name ?? this.name,
       color: color ?? this.color,
+      parentId: parentId ?? this.parentId,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       version: version ?? this.version,
@@ -3036,6 +3081,9 @@ class TagsCompanion extends UpdateCompanion<Tag> {
     }
     if (color.present) {
       map['color'] = Variable<int>(color.value);
+    }
+    if (parentId.present) {
+      map['parent_id'] = Variable<int>(parentId.value);
     }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
@@ -3059,6 +3107,7 @@ class TagsCompanion extends UpdateCompanion<Tag> {
           ..write('uuid: $uuid, ')
           ..write('name: $name, ')
           ..write('color: $color, ')
+          ..write('parentId: $parentId, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('version: $version, ')
@@ -5311,6 +5360,7 @@ abstract class _$PlainLeafDatabase extends GeneratedDatabase {
     this as PlainLeafDatabase,
   );
   late final AssetsDao assetsDao = AssetsDao(this as PlainLeafDatabase);
+  late final TagsDao tagsDao = TagsDao(this as PlainLeafDatabase);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -6511,6 +6561,7 @@ typedef $$TagsTableCreateCompanionBuilder =
       required String uuid,
       required String name,
       Value<int?> color,
+      Value<int?> parentId,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<int> version,
@@ -6522,6 +6573,7 @@ typedef $$TagsTableUpdateCompanionBuilder =
       Value<String> uuid,
       Value<String> name,
       Value<int?> color,
+      Value<int?> parentId,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<int> version,
@@ -6554,6 +6606,11 @@ class $$TagsTableFilterComposer
 
   ColumnFilters<int> get color => $composableBuilder(
     column: $table.color,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get parentId => $composableBuilder(
+    column: $table.parentId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -6607,6 +6664,11 @@ class $$TagsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get parentId => $composableBuilder(
+    column: $table.parentId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -6648,6 +6710,9 @@ class $$TagsTableAnnotationComposer
 
   GeneratedColumn<int> get color =>
       $composableBuilder(column: $table.color, builder: (column) => column);
+
+  GeneratedColumn<int> get parentId =>
+      $composableBuilder(column: $table.parentId, builder: (column) => column);
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
@@ -6694,6 +6759,7 @@ class $$TagsTableTableManager
                 Value<String> uuid = const Value.absent(),
                 Value<String> name = const Value.absent(),
                 Value<int?> color = const Value.absent(),
+                Value<int?> parentId = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> version = const Value.absent(),
@@ -6703,6 +6769,7 @@ class $$TagsTableTableManager
                 uuid: uuid,
                 name: name,
                 color: color,
+                parentId: parentId,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 version: version,
@@ -6714,6 +6781,7 @@ class $$TagsTableTableManager
                 required String uuid,
                 required String name,
                 Value<int?> color = const Value.absent(),
+                Value<int?> parentId = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> version = const Value.absent(),
@@ -6723,6 +6791,7 @@ class $$TagsTableTableManager
                 uuid: uuid,
                 name: name,
                 color: color,
+                parentId: parentId,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 version: version,

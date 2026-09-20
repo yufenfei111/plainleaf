@@ -83,6 +83,7 @@ class Tags extends Table {
   TextColumn get uuid => text().withLength(min: 36, max: 36)();
   TextColumn get name => text().unique()();
   IntColumn get color => integer().nullable()();
+  IntColumn get parentId => integer().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
   IntColumn get version => integer().withDefault(const Constant(1))();
