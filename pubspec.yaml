@@ -41,6 +41,10 @@ dependencies:
   path: ^1.9.0                   # MediaStorage 路径拼接（传递依赖显式声明）
   archive: ^3.6.0                # .plbk 备份包 zip 打包（清单基线阶段 4 组，W5 预支）
 
+  # W6 图片管线：两级缩略图 + Isolate 转码（§4.3 媒体文件；性能红线 60fps）
+  image: ^4.2.0                  # 解码/缩放/编码与 EXIF 方向烘焙（纯 Dart，在 isolate 内跑）
+  crypto: ^3.0.6                 # hash_sha256（§4.3 修正 ①，资产去重与完整性校验）
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

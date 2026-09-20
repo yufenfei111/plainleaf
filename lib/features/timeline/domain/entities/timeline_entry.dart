@@ -43,6 +43,7 @@ class TimelineEntry {
     this.notebookName,
     this.notebookSpace,
     this.firstAssetRelPath,
+    this.firstAssetThumbPath,
   });
 
   final int id;
@@ -62,6 +63,9 @@ class TimelineEntry {
 
   /// 首图相对路径（W4 图片管线接入后用于卡片缩略图）
   final String? firstAssetRelPath;
+
+  /// 首图缩略图相对路径（W6 两级缩略图；为空时回退原图）
+  final String? firstAssetThumbPath;
 }
 
 /// 新建/更新记录草稿（TimelineRepository.saveEntry / updateEntry 的入参）

@@ -41,4 +41,7 @@ abstract interface class TimelineRepository {
 
   /// 条目首图相对路径（时间轴缩略图用；无图返回 null）
   Future<String?> firstImagePath(int entryId);
+
+  /// 补齐历史资产的缩略图（W4 期落库的图没有 thumb），返回处理条数
+  Future<int> backfillDerived({int limit = 200});
 }

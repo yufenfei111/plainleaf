@@ -75,18 +75,22 @@ class BackupService {
       }
 
       // 2) 收集媒体文件（相对路径用正斜杠，与库内 relPath 约定一致）
-      final mediaRoot = await _media.mediaRoot();
+      //    只打包 media（原图）与 thumb（缩略图）；medium 是派生图，
+      //    体积大而可重算，恢复后按需再生成，避免备份包翻倍。
+      final support = await _media.supportDir();
       final archive = Archive();
       final snapshotBytes = snapshot.readAsBytesSync();
       archive.addFile(ArchiveFile('plainleaf.sqlite', snapshotBytes.length, snapshotBytes));
-      if (mediaRoot.existsSync()) {
-        await for (final f in mediaRoot.list(recursive: true)) {
+      for (final kind in <MediaKind>[MediaKind.original, MediaKind.thumb]) {
+        final root = await _media.root(kind);
+        if (!root.existsSync()) continue;
+        await for (final f in root.list(recursive: true)) {
           if (f is File) {
             final rel = p.posix.joinAll(
-              p.split(p.relative(f.path, from: mediaRoot.path)),
+              p.split(p.relative(f.path, from: support.path)),
             );
             final bytes = f.readAsBytesSync();
-            archive.addFile(ArchiveFile('media/$rel', bytes.length, bytes));
+            archive.addFile(ArchiveFile(rel, bytes.length, bytes));
           }
         }
       }
@@ -95,7 +99,8 @@ class BackupService {
       final entries = await _db.select(_db.entries).get();
       final manifest = {
         'app': 'plainleaf',
-        'format': 'plbk/1',
+        // format 升到 plbk/2：含 thumb 目录（W6 两级缩略图）；向后兼容 plbk/1
+        'format': 'plbk/2',
         'schemaVersion': _db.schemaVersion,
         'exportedAt': DateTime.now().toIso8601String(),
         'entries': entries.where((e) => !e.deleted).length,
@@ -128,7 +133,10 @@ class BackupService {
     }
     final map =
         jsonDecode(utf8.decode(manifest.content as List<int>)) as Map<String, Object?>;
-    if (map['app'] != 'plainleaf' || map['format'] != 'plbk/1') {
+    // 兼容两代格式：plbk/1（仅原图）与 plbk/2（含 thumb）
+    const supported = {'plbk/1', 'plbk/2'};
+    if (map['app'] != 'plainleaf' ||
+        !supported.contains(map['format'].toString())) {
       throw FormatException('不支持的备份包格式: ${map['format']}');
     }
     if (archive.findFile('plainleaf.sqlite') == null) {
@@ -154,11 +162,12 @@ class BackupService {
     await target.parent.create(recursive: true);
     await target.writeAsBytes(dbFile.content as List<int>, flush: true);
 
-    final mediaRoot = await _media.mediaRoot();
+    final support = await _media.supportDir();
     for (final f in archive.files) {
-      if (f.name.startsWith('media/') && f.isFile) {
-        final rel = f.name.substring('media/'.length);
-        final out = File(p.join(mediaRoot.path, rel));
+      // 包内相对路径以支持目录为基准（media/…、thumb/…）
+      if (f.isFile &&
+          (f.name.startsWith('media/') || f.name.startsWith('thumb/'))) {
+        final out = File(p.join(support.path, f.name));
         await out.parent.create(recursive: true);
         await out.writeAsBytes(f.content as List<int>, flush: true);
       }
