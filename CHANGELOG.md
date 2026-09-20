@@ -49,6 +49,21 @@
 - 依赖：archive ^3.6.0（zip 打包）
 - 测试：test/w5_test.dart 7 例 + test/migration_test.dart 1 例，合计 23 例（本机 flutter_tester 无法启动，待 CI/开发机复核）
 
+### Added（阶段 1 · W5 验收补齐，2026-09-20）
+- 搜索关键词高亮（#12 补齐）：buildHighlightSpans 切分命中区间（重叠合并、无命中不拆分），
+  结果标题/摘要改 Text.rich 渲染 + 4 例测试（§5.3 验收项，此前功能缺失）
+- 编辑器 500ms 防抖专项测试：窗口内不落库、越过窗口自动落库（不点「完成」也生效）
+- 主链路集成测试 test/main_flow_test.dart：建记录 → FTS 命中 → 导出 .plbk → 恢复 → 重开库校验
+  数据与索引 + 断言恢复前自动备份（放 test/ 以便并入 flutter test，integration_test 需真机）
+- core 手写代码行覆盖率 65.3% → **73.5%**（§5.3 硬指标 70%）：补齐 restore 全链路、
+  笔记本 rename/softDelete/insertNotebook、MediaStorage.deleteRel、DatabaseException
+- 验收报告 docs/verification-w5.md：结论表、分组覆盖率、真机走查清单、本机环境要点
+
+### 验收结果（2026-09-20）
+- flutter analyze：No issues found；flutter test：**32/32 passed**；core 手写覆盖率 73.5%
+- flutter build apk --debug：通过（build/app/outputs/flutter-apk/app-debug.apk）
+- 遗留：真机走查（10 项清单见 verification-w5.md）待执行；iOS 本期不纳入
+
 ## [0.1.0] - unreleased
 
 - M1 目标（2026-10-11）：MVP 记录内核（编辑器/图片管线/搜索/备份），发布 v0.1.0-alpha tag
