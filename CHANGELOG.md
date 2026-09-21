@@ -84,6 +84,22 @@
 - 测试：test/thumbnail_test.dart 5 例（缩略图尺寸/小图不放大/attach 回填/backfill/分页）
   + test/editor_fallback_test.dart 1 例回归；全套 38/38，core 手写覆盖率 73.5% → 77.2%
 
+### Added（阶段 2 · W7 组织：月分组 / 筛选 / 置顶 / 回收站，2026-09-21）
+- 时间轴月分组（#21）：「2026年09月 · N 条」月头 + 月内日锚点；分组抽成 domain 纯函数
+  `groupByMonth`（置顶独立成组并排最前，避免置顶优先被月份切碎），可直接单测
+- 筛选器（#21）：笔记本 / 类型 / 仅看置顶三维度，**过滤下推 SQL where**——不在客户端过滤，
+  否则先 `LIMIT 100` 再筛会出现"筛选后只剩几条"的假象；筛选态由 `timelineFilterProvider`
+  持有，可一键清除；筛选后无结果有独立空态文案
+- 置顶收藏（#22）：卡片置顶标记 + 长按菜单切换置顶 / 移到回收站（删除带撤销 SnackBar）
+- 回收站（#23）：恢复 / 永久删除（二次确认）/ 清空回收站，并显示剩余保留天数；
+  硬删在同一事务内清理 `entries_fts`、`entry_tags`，关联 assets/todos 一并软删
+  （drift 默认开外键，子表行必须先处理）
+- 历史缩略图补齐（#24，W6 遗留）：设置页入口消费 `backfillDerived`，W4 期无 thumb 的图不再
+  只能回退原图解码
+- 写操作门面 `TimelineActions`：置顶/删除/恢复/清空/补齐统一入口，错误统一转 SnackBar，
+  避免每个 Widget 各写一遍 try/catch
+- 测试：test/w7_test.dart 12 例；全套 **50/50 passed**，core 手写覆盖率 77.2% → **79.3%**
+
 ## [0.1.0] - unreleased
 
 - M1 目标（2026-10-11）：MVP 记录内核（编辑器/图片管线/搜索/备份），发布 v0.1.0-alpha tag
