@@ -38,6 +38,7 @@ class TimelineEntry {
     required this.status,
     required this.pinned,
     required this.entryDate,
+    required this.updatedAt,
     this.mood,
     this.notebookId,
     this.notebookName,
@@ -54,6 +55,9 @@ class TimelineEntry {
   final EntryStatus status;
   final bool pinned;
   final DateTime entryDate;
+
+  /// 最近一次修改时间（回收站剩余保留天数据此计算）
+  final DateTime updatedAt;
 
   /// 心情 1–5 档（null = 未记录）
   final int? mood;

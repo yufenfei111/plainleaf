@@ -20,9 +20,24 @@ class EntriesDao extends DatabaseAccessor<PlainLeafDatabase>
   EntriesDao(super.db);
 
   /// 时间轴流：未删除、非草稿条目，置顶优先 + 日期倒序，流式联首图与笔记本
-  Stream<List<TimelineRow>> watchTimeline({int limit = 100}) {
+  ///
+  /// W7 起支持筛选（notebookId / type / pinnedOnly）：
+  /// 过滤一律下推到 SQL where，**不做客户端过滤**——否则先 LIMIT 100 再筛，
+  /// 会出现"筛选后只剩几条"的假象（数据其实被截断在前面）。
+  Stream<List<TimelineRow>> watchTimeline({
+    int limit = 100,
+    int? notebookId,
+    String? type,
+    bool pinnedOnly = false,
+  }) {
     final query = select(entries)
-      ..where((e) => e.deleted.equals(false) & e.status.equals('normal'))
+      ..where((e) {
+        var cond = e.deleted.equals(false) & e.status.equals('normal');
+        if (notebookId != null) cond = cond & e.notebookId.equals(notebookId);
+        if (type != null) cond = cond & e.type.equals(type);
+        if (pinnedOnly) cond = cond & e.pinned.equals(true);
+        return cond;
+      })
       ..orderBy([
         (e) => OrderingTerm.desc(e.pinned),
         (e) => OrderingTerm.desc(e.entryDate),
@@ -187,6 +202,42 @@ class EntriesDao extends DatabaseAccessor<PlainLeafDatabase>
     });
   }
 
+  /// 回收站**永久删除**（W7）：物理删除条目行，并清理它的全部附属数据。
+  ///
+  /// 顺序不能反：drift 默认开启外键约束，子表行必须先处理。
+  /// - entry_tags / entries_fts：物理删（纯索引数据，无软删语义）
+  /// - assets / todos：软删（保持数据红线"删除一律软删"，文件与行都留着可追溯）
+  Future<void> hardDelete(int id) => transaction(() async {
+        await _detachEntry(id);
+        await (delete(entries)..where((e) => e.id.equals(id))).go();
+      });
+
+  /// 清空回收站（W7）：永久删除所有 deleted=true 的条目，返回清理条数
+  Future<int> emptyTrash() => transaction(() async {
+        final ids = await (select(entries)
+              ..where((e) => e.deleted.equals(true)))
+            .map((e) => e.id)
+            .get();
+        for (final id in ids) {
+          await _detachEntry(id);
+        }
+        if (ids.isNotEmpty) {
+          await (delete(entries)..where((e) => e.deleted.equals(true))).go();
+        }
+        return ids.length;
+      });
+
+  /// 清除某条目的附属数据（供 hardDelete / emptyTrash 在事务内复用）
+  Future<void> _detachEntry(int id) async {
+    await customStatement('DELETE FROM entry_tags WHERE entry_id = ?', [id]);
+    await customStatement('DELETE FROM entries_fts WHERE entry_id = ?', [id]);
+    await (update(assets)..where((a) => a.entryId.equals(id)))
+        .write(const AssetsCompanion(deleted: Value(true)));
+    // todos 不在本 accessor 的 tables 里（避免为一次软删扩大 accessor 面），
+    // 走等价的裸 SQL；语义同样是软删，不物理删行。
+    await customStatement('UPDATE todos SET deleted = 1 WHERE entry_id = ?', [id]);
+  }
+
   /// 回收站 30 天清理：物理删除过期软删行及其 FTS 残留（§4.3 媒体清理策略）。
   /// 返回清理条数；每次启动时调用一次。
   Future<int> purgeExpiredTrash({int retainDays = 30}) {
@@ -197,8 +248,7 @@ class EntriesDao extends DatabaseAccessor<PlainLeafDatabase>
             ..where((e) => e.deleted.equals(true) & e.updatedAt.isSmallerThanValue(cutoff)))
           .get();
       for (final e in expired) {
-        await customStatement(
-            'DELETE FROM entries_fts WHERE entry_id = ?', [e.id]);
+        await _detachEntry(e.id);
       }
       if (expired.isNotEmpty) {
         await (delete(entries)

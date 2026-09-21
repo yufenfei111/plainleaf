@@ -1,10 +1,15 @@
 import '../entities/timeline_entry.dart';
+import '../entities/timeline_filter.dart';
 
 /// 记录仓库接口（features/timeline/domain）。
 /// 实现见 data/timeline_repository_impl.dart；UI 只依赖本接口（§4.2 分层红线）。
 abstract interface class TimelineRepository {
-  /// 时间轴流：未删除、非草稿条目，置顶优先 + 日期倒序，联首图与笔记本
-  Stream<List<TimelineEntry>> watchTimeline({int limit = 100});
+  /// 时间轴流：未删除、非草稿条目，置顶优先 + 日期倒序，联首图与笔记本。
+  /// [filter] 由数据层翻译成 SQL where（W7 组织能力）
+  Stream<List<TimelineEntry>> watchTimeline({
+    int limit = 100,
+    TimelineFilter filter = const TimelineFilter(),
+  });
 
   /// 保存一条新记录：entries + entries_fts 同一事务双写（§4.3 数据红线）
   Future<int> saveEntry(EntryDraft draft);
@@ -35,6 +40,12 @@ abstract interface class TimelineRepository {
 
   /// 回收站 30 天清理：物理删除过期软删行；App 启动调用。返回清理条数
   Future<int> purgeExpiredTrash({int retainDays = 30});
+
+  /// 永久删除（W7）：物理删除条目行 + 清理 FTS/标签/关联资产，不可恢复
+  Future<void> hardDelete(int id);
+
+  /// 清空回收站（W7）：永久删除全部软删条目，返回清理条数
+  Future<int> emptyTrash();
 
   /// 为条目挂接一张本地图片（复制进私有目录 + assets 落库），返回 asset id
   Future<int> attachImage(int entryId, String sourcePath);

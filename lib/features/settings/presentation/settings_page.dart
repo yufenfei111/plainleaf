@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../../app/providers.dart';
 import '../../../core/exporter/backup_service.dart';
 import '../../../core/exporter/markdown_exporter.dart';
+import '../../timeline/presentation/providers/timeline_providers.dart';
 
 /// 我的 Tab（W5：备份与导出真实功能上线；同步/应用锁按 W13–W15 排期）
 class SettingsPage extends ConsumerWidget {
@@ -35,6 +36,12 @@ class SettingsPage extends ConsumerWidget {
             title: const Text('导出全部记录（Markdown）'),
             subtitle: const Text('已发布记录导出为单个 .md 文本'),
             onTap: () => _exportMarkdown(context, ref),
+          ),
+          ListTile(
+            leading: const Icon(Icons.auto_awesome_outlined),
+            title: const Text('补齐历史缩略图'),
+            subtitle: const Text('为早期记录重新生成缩略图，列表滑动更流畅'),
+            onTap: () => _backfillThumbs(context, ref),
           ),
           const Divider(),
           ListTile(
@@ -106,6 +113,24 @@ class SettingsPage extends ConsumerWidget {
       print('---- PLAINLEAF MARKDOWN EXPORT (${md.length} chars) ----');
     } on Exception catch (error) {
       messenger.showSnackBar(SnackBar(content: Text('导出失败：$error')));
+    }
+  }
+
+  /// 补齐历史缩略图（W6 遗留 entry：`backfillDerived` 已就绪但此前没有入口，
+  /// W4 期的图永远没有 thumb，列表只能回退原图解码——滑动手感回不去）
+  Future<void> _backfillThumbs(BuildContext context, WidgetRef ref) async {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(const SnackBar(content: Text('正在补齐缩略图…')));
+    try {
+      final n = await ref.read(timelineActionsProvider).backfillDerived();
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(SnackBar(
+        content: Text(n == 0 ? '没有需要补齐的图片' : '已补齐 $n 张缩略图'),
+        duration: const Duration(seconds: 3),
+      ));
+    } on Exception catch (error) {
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(SnackBar(content: Text('补齐失败：$error')));
     }
   }
 

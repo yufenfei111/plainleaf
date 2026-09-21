@@ -7,12 +7,16 @@ import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as p;
 
 import '../domain/entities/timeline_entry.dart';
-import '../../../../app/providers.dart';
+import '../domain/entities/timeline_filter.dart';
+import '../domain/timeline_grouping.dart';
+import '../../../app/providers.dart';
+import '../../notebooks/presentation/providers/notebooks_providers.dart';
 import 'providers/timeline_providers.dart';
 
-/// 时间轴首页（W3：编辑器/草稿箱/回收站全链路接入）
-/// 页面要素（计划书 §5.2）：日期锚点、图文卡片、心情色点、悬浮「+」
-/// 走查三要素：loading / empty / error 三态齐全。
+/// 时间轴首页（W7：月分组 + 筛选器 + 置顶收藏）
+///
+/// 页面要素（计划书 §5.2）：月/日锚点、图文卡片、心情色点、悬浮「+」
+/// 走查三要素：loading / empty / error 三态齐全；筛选后无结果另有空态。
 class TimelinePage extends ConsumerWidget {
   const TimelinePage({super.key});
 
@@ -47,12 +51,87 @@ class TimelinePage extends ConsumerWidget {
         icon: const Icon(Icons.add),
         label: const Text('记一笔'),
       ),
-      body: timeline.when(
-        data: (entries) => entries.isEmpty
-            ? const _EmptyView()
-            : _TimelineList(entries: entries, root: root),
-        loading: () => const _LoadingView(),
-        error: (error, _) => _ErrorView(error: '$error'),
+      body: Column(
+        children: [
+          const _FilterBar(),
+          Expanded(
+            child: timeline.when(
+              data: (entries) => entries.isEmpty
+                  ? _EmptyView(filtered: !ref.watch(timelineFilterProvider).isEmpty)
+                  : _TimelineList(entries: entries, root: root),
+              loading: () => const _LoadingView(),
+              error: (error, _) => _ErrorView(error: '$error'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 筛选条（W7）：笔记本 / 类型 / 仅看置顶
+///
+/// 只改 `timelineFilterProvider` 一个状态，流会自动带着新的 where 重查——
+/// UI 不做任何客户端过滤，避免"先 LIMIT 再筛"导致的假空列表。
+class _FilterBar extends ConsumerWidget {
+  const _FilterBar();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final filter = ref.watch(timelineFilterProvider);
+    final notebooks = ref.watch(notebooksStreamProvider);
+    final cs = Theme.of(context).colorScheme;
+
+    return SizedBox(
+      height: 52,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        children: [
+          FilterChip(
+            label: const Text('仅看置顶'),
+            avatar: const Icon(Icons.push_pin, size: 16),
+            selected: filter.pinnedOnly,
+            onSelected: (v) => ref
+                .read(timelineFilterProvider.notifier)
+                .update((s) => s.copyWith(pinnedOnly: v)),
+          ),
+          const SizedBox(width: 8),
+          for (final t in EntryType.values) ...[
+            FilterChip(
+              label: Text(t.label),
+              selected: filter.type == t,
+              onSelected: (v) => ref
+                  .read(timelineFilterProvider.notifier)
+                  .update((s) => s.copyWith(type: t, clearType: !v)),
+            ),
+            const SizedBox(width: 8),
+          ],
+          ...notebooks.when(
+            data: (list) => [
+              for (final n in list) ...[
+                FilterChip(
+                  label: Text(n.name),
+                  selected: filter.notebookId == n.id,
+                  onSelected: (v) => ref
+                      .read(timelineFilterProvider.notifier)
+                      .update((s) => s.copyWith(notebookId: n.id, clearNotebook: !v)),
+                ),
+                const SizedBox(width: 8),
+              ],
+            ],
+            loading: () => const <Widget>[SizedBox.shrink()],
+            error: (_, _) => const <Widget>[SizedBox.shrink()],
+          ),
+          if (!filter.isEmpty)
+            ActionChip(
+              label: Text('清除 ${filter.activeCount}'),
+              backgroundColor: cs.errorContainer,
+              onPressed: () => ref
+                  .read(timelineFilterProvider.notifier)
+                  .update((_) => const TimelineFilter()),
+            ),
+        ],
       ),
     );
   }
@@ -67,6 +146,42 @@ const _moodColors = <int, Color>{
   5: Color(0xFFEF9A9A),
 };
 
+/// 列表行模型：月头 / 日头 / 卡片，摊平成一维再交给 builder
+/// （比嵌套 for 更好控制 itemCount，也让分组逻辑留在可测的纯函数里）
+sealed class _Row {}
+
+class _MonthRow extends _Row {
+  _MonthRow(this.label, this.count, this.pinned);
+
+  final String label;
+  final int count;
+  final bool pinned;
+}
+
+class _DayRow extends _Row {
+  _DayRow(this.label);
+
+  final String label;
+}
+
+class _EntryRow extends _Row {
+  _EntryRow(this.entry);
+
+  final TimelineEntry entry;
+}
+
+List<_Row> _flatten(List<EntryMonthGroup> groups) {
+  final rows = <_Row>[];
+  for (final g in groups) {
+    rows.add(_MonthRow(g.label, g.count, g.pinned));
+    for (final d in g.days) {
+      rows.add(_DayRow(d.label));
+      rows.addAll(d.items.map(_EntryRow.new));
+    }
+  }
+  return rows;
+}
+
 class _TimelineList extends StatelessWidget {
   const _TimelineList({required this.entries, this.root});
 
@@ -77,51 +192,85 @@ class _TimelineList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 日期锚点分组：同日合并，倒序展示
-    final groups = <String, List<TimelineEntry>>{};
-    for (final r in entries) {
-      final d = r.entryDate;
-      final key = '${d.year}年${d.month.toString().padLeft(2, '0')}月'
-          '${d.day.toString().padLeft(2, '0')}日';
-      groups.putIfAbsent(key, () => []).add(r);
-    }
-    final keys = groups.keys.toList(growable: false);
-
+    final rows = _flatten(groupByMonth(entries));
     return ListView.builder(
       padding: const EdgeInsets.only(top: 4, bottom: 96),
       // 预渲染视口外的缓冲：滑动时提前备好下一屏，减少"边滑边建"的抖动
-      // （Flutter 3.41+ 用 ScrollCacheExtent；这里按视口倍数给，比写死像素更适配大屏）
       scrollCacheExtent: const ScrollCacheExtent.viewport(1.0),
-      itemCount: keys.length,
+      itemCount: rows.length,
       itemBuilder: (context, i) {
-        final key = keys[i];
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
-              child: Text(
-                key,
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      color: Theme.of(context).colorScheme.primary,
-                      fontWeight: FontWeight.w600,
-                    ),
-              ),
-            ),
-            for (final r in groups[key]!) _EntryCard(r, root: root),
-          ],
-        );
+        final row = rows[i];
+        return switch (row) {
+          _MonthRow() => _MonthHeader(row: row),
+          _DayRow() => _DayHeader(row: row),
+          _EntryRow() => _EntryCard(row.entry, root: root),
+        };
       },
     );
   }
 }
 
-/// 列表缩略图（W6 性能改造）
+class _MonthHeader extends StatelessWidget {
+  const _MonthHeader({required this.row});
+
+  final _MonthRow row;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 4),
+      child: Row(
+        children: [
+          Icon(row.pinned ? Icons.push_pin : Icons.calendar_today_outlined,
+              size: 16, color: cs.primary),
+          const SizedBox(width: 6),
+          Text(
+            row.label,
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  color: cs.primary,
+                  fontWeight: FontWeight.w600,
+                ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            '${row.count} 条',
+            style: Theme.of(context)
+                .textTheme
+                .labelSmall
+                ?.copyWith(color: cs.onSurfaceVariant),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DayHeader extends StatelessWidget {
+  const _DayHeader({required this.row});
+
+  final _DayRow row;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 2),
+      child: Text(
+        row.label,
+        style: Theme.of(context)
+            .textTheme
+            .labelMedium
+            ?.copyWith(color: Theme.of(context).hintColor),
+      ),
+    );
+  }
+}
+
+/// 列表缩略图（W6 性能改造，W7 沿用）
 /// 三处关键点，缺一个都会让滑动掉帧：
 /// 1. **优先用 thumb 而不是原图**：52dp 的框里解码 4000×3000 的原图，
 ///    单张就吃掉几十 MB 解码内存，是列表卡顿的头号来源；
-/// 2. **cacheWidth 限制解码尺寸**：即使回退到原图，也只按显示尺寸×DPR 解码，
-///    不让引擎把整张图摊开；
+/// 2. **cacheWidth 限制解码尺寸**：即使回退到原图，也只按显示尺寸×DPR 解码；
 /// 3. **路径同步拼接**：root 由上层 provider 给，卡片内不再发起 Future。
 class _ThumbTile extends StatelessWidget {
   const _ThumbTile({required this.rel, required this.root, required this.size});
@@ -139,15 +288,13 @@ class _ThumbTile extends StatelessWidget {
     return Image.file(
       File(p.join(root!, rel)),
       fit: BoxFit.cover,
-      // 按显示尺寸解码（×设备像素比），避免解码整张原图
       cacheWidth: (size * dpr).round(),
-      // 解码失败/文件缺失不再抛红屏，回退占位色块
       errorBuilder: (_, _, _) => const SizedBox.expand(),
     );
   }
 }
 
-class _EntryCard extends StatelessWidget {
+class _EntryCard extends ConsumerWidget {
   const _EntryCard(this.entry, {this.root});
 
   final TimelineEntry entry;
@@ -156,21 +303,21 @@ class _EntryCard extends StatelessWidget {
   final String? root;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final moodColor = entry.mood == null ? null : _moodColors[entry.mood!];
     // 有缩略图用缩略图，没有（W4 期历史数据）回退原图，但解码尺寸仍受限
     final thumbRel = entry.firstAssetThumbPath ?? entry.firstAssetRelPath;
     return Card(
-      // 点击卡片进入编辑器继续编辑（W3 记录内核）
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: () => context.push('/editor?id=${entry.id}'),
+        // 长按出操作菜单：置顶 / 删除（W7 置顶收藏）
+        onLongPress: () => _showEntryMenu(context, ref, entry),
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 图文卡片左侧：首图缩略图（W4 真实图片；无图时类型图标）
               Container(
                 width: 52,
                 height: 52,
@@ -198,6 +345,12 @@ class _EntryCard extends StatelessWidget {
                   children: [
                     Row(
                       children: [
+                        if (entry.pinned) ...[
+                          Icon(Icons.push_pin,
+                              size: 14,
+                              color: Theme.of(context).colorScheme.primary),
+                          const SizedBox(width: 4),
+                        ],
                         Expanded(
                           child: Text(
                             entry.title.isEmpty ? '(无标题)' : entry.title,
@@ -246,6 +399,62 @@ class _EntryCard extends StatelessWidget {
       ),
     );
   }
+
+  Future<void> _showEntryMenu(
+      BuildContext context, WidgetRef ref, TimelineEntry entry) async {
+    final actions = ref.read(timelineActionsProvider);
+    final messenger = ScaffoldMessenger.of(context);
+    await showModalBottomSheet<void>(
+      context: context,
+      builder: (_) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: Icon(entry.pinned ? Icons.push_pin : Icons.push_pin_outlined),
+              title: Text(entry.pinned ? '取消置顶' : '置顶这条'),
+              onTap: () async {
+                Navigator.pop(context);
+                try {
+                  final pinned = await actions.togglePinned(entry);
+                  if (!context.mounted) return;
+                  messenger.showSnackBar(
+                    SnackBar(content: Text(pinned ? '已置顶' : '已取消置顶')),
+                  );
+                } on Exception catch (error) {
+                  if (!context.mounted) return;
+                  messenger.showSnackBar(SnackBar(content: Text('操作失败：$error')));
+                }
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline),
+              title: const Text('移到回收站'),
+              onTap: () async {
+                Navigator.pop(context);
+                try {
+                  await actions.softDelete(entry.id);
+                  if (!context.mounted) return;
+                  messenger.showSnackBar(
+                    SnackBar(
+                      content: const Text('已移到回收站'),
+                      action: SnackBarAction(
+                        label: '撤销',
+                        onPressed: () => actions.restore(entry.id),
+                      ),
+                    ),
+                  );
+                } on Exception catch (error) {
+                  if (!context.mounted) return;
+                  messenger.showSnackBar(SnackBar(content: Text('删除失败：$error')));
+                }
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _Chip extends StatelessWidget {
@@ -282,7 +491,10 @@ class _LoadingView extends StatelessWidget {
 }
 
 class _EmptyView extends StatelessWidget {
-  const _EmptyView();
+  const _EmptyView({this.filtered = false});
+
+  /// 是否处于"筛选后无结果"（与"一条记录都没有"给不同文案）
+  final bool filtered;
 
   @override
   Widget build(BuildContext context) {
@@ -290,14 +502,17 @@ class _EmptyView extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.spa_outlined,
+          Icon(filtered ? Icons.filter_alt_off_outlined : Icons.spa_outlined,
               size: 56,
               color: Theme.of(context).colorScheme.primary.withAlpha(120)),
           const SizedBox(height: 12),
-          Text('还没有记录', style: Theme.of(context).textTheme.titleMedium),
+          Text(
+            filtered ? '没有符合条件的记录' : '还没有记录',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
           const SizedBox(height: 4),
           Text(
-            '点右下角「记一笔」，写下第一条',
+            filtered ? '试试清除上方的筛选条件' : '点右下角「记一笔」，写下第一条',
             style: Theme.of(context)
                 .textTheme
                 .bodyMedium

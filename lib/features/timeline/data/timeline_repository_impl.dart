@@ -9,6 +9,7 @@ import '../../../core/errors/app_exception.dart';
 import '../../../core/media/thumbnail_pipeline.dart';
 import '../../../core/storage/media_storage.dart';
 import '../domain/entities/timeline_entry.dart';
+import '../domain/entities/timeline_filter.dart';
 import '../domain/repositories/timeline_repository.dart';
 
 /// [TimelineRepository] 的本地 Drift 实现。
@@ -28,9 +29,17 @@ class LocalTimelineRepository implements TimelineRepository {
   final MediaStorage _media;
 
   @override
-  Stream<List<TimelineEntry>> watchTimeline({int limit = 100}) {
+  Stream<List<TimelineEntry>> watchTimeline({
+    int limit = 100,
+    TimelineFilter filter = const TimelineFilter(),
+  }) {
     return _dao
-        .watchTimeline(limit: limit)
+        .watchTimeline(
+          limit: limit,
+          notebookId: filter.notebookId,
+          type: filter.type?.name,
+          pinnedOnly: filter.pinnedOnly,
+        )
         .map((rows) => rows.map(_rowToEntity).toList(growable: false));
   }
 
@@ -135,6 +144,24 @@ class LocalTimelineRepository implements TimelineRepository {
     }
   }
 
+  @override
+  Future<void> hardDelete(int id) async {
+    try {
+      await _dao.hardDelete(id);
+    } on Exception catch (error) {
+      throw DatabaseException('永久删除失败', cause: error);
+    }
+  }
+
+  @override
+  Future<int> emptyTrash() async {
+    try {
+      return await _dao.emptyTrash();
+    } on Exception catch (error) {
+      throw DatabaseException('清空回收站失败', cause: error);
+    }
+  }
+
   // ── 内部 ──────────────────────────────────────────────────────────
 
   List<TimelineEntry> _rowsToEntities(List<Entry> rows) =>
@@ -151,6 +178,7 @@ class LocalTimelineRepository implements TimelineRepository {
       status: EntryStatus.fromName(e.status),
       pinned: e.pinned,
       entryDate: e.entryDate,
+      updatedAt: e.updatedAt,
       mood: e.mood,
       notebookId: e.notebookId,
     );
@@ -259,6 +287,7 @@ class LocalTimelineRepository implements TimelineRepository {
       status: EntryStatus.fromName(entry.status),
       pinned: entry.pinned,
       entryDate: entry.entryDate,
+      updatedAt: entry.updatedAt,
       mood: entry.mood,
       notebookId: entry.notebookId,
       notebookName: row.notebook?.name,
