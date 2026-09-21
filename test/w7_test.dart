@@ -107,14 +107,14 @@ void main() {
   });
 
   group('筛选下推到 SQL（issue #21）', () {
-    Future<int> _mkNotebook(String name) => db
+    Future<int> mkNotebook(String name) => db
         .into(db.notebooks)
         .insert(NotebooksCompanion.insert(
             uuid: const Uuid().v4(), name: Value(name)));
 
     test('按笔记本筛选：只返回该笔记本的条目', () async {
-      final life = await _mkNotebook('生活');
-      final study = await _mkNotebook('学习');
+      final life = await mkNotebook('生活');
+      final study = await mkNotebook('学习');
       await repo.saveEntry(
           EntryDraft(title: '生活A', plainText: 'a', notebookId: life));
       await repo.saveEntry(
