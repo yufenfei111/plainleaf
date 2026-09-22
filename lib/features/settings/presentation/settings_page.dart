@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/providers.dart';
+import '../../../app/theme.dart';
 import '../../../core/exporter/backup_service.dart';
 import '../../../core/exporter/markdown_exporter.dart';
 import '../../timeline/presentation/providers/timeline_providers.dart';
@@ -19,6 +20,10 @@ class SettingsPage extends ConsumerWidget {
       appBar: AppBar(title: const Text('我的')),
       body: ListView(
         children: [
+          // 外观分组（W9 主题系统）：主题模式 / 字体缩放 / 强调色。
+          // 放在备份分组之前，作为高频设置入口更顺手。
+          _appearanceCard(context, ref),
+          const Divider(),
           ListTile(
             leading: const Icon(Icons.archive_outlined),
             title: const Text('导出备份包（.plbk）'),
@@ -36,6 +41,12 @@ class SettingsPage extends ConsumerWidget {
             title: const Text('导出全部记录（Markdown）'),
             subtitle: const Text('已发布记录导出为单个 .md 文本'),
             onTap: () => _exportMarkdown(context, ref),
+          ),
+          ListTile(
+            leading: const Icon(Icons.file_download_outlined),
+            title: const Text('导入 Markdown（.md）'),
+            subtitle: const Text('把外部 Markdown 文本转成记录'),
+            onTap: () => context.push('/import'),
           ),
           ListTile(
             leading: const Icon(Icons.auto_awesome_outlined),
@@ -64,17 +75,183 @@ class SettingsPage extends ConsumerWidget {
             enabled: false,
           ),
           ListTile(
-            leading: const Icon(Icons.palette_outlined),
-            title: const Text('主题'),
-            subtitle: const Text('W9 上线'),
-            enabled: false,
-          ),
-          ListTile(
             leading: const Icon(Icons.info_outline),
             title: const Text('关于素页'),
             subtitle: const Text('本地优先的图文记录工具 · v0.1.0'),
           ),
         ],
+      ),
+    );
+  }
+
+  /// 外观分组卡片（W9）：把主题模式 / 字体缩放 / 强调色收在一张卡里，
+  /// 就近在设置页完成，不另开页面。卡片内所有文字/边框/选中标记都取自 Theme，
+  /// 只有强调色色块本身用预设色（那是它的职责）。
+  Widget _appearanceCard(BuildContext context, WidgetRef ref) {
+    final textTheme = Theme.of(context).textTheme;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('外观', style: textTheme.titleMedium),
+            const SizedBox(height: 4),
+            Text('主题与字号仅作用于本 App；强调色会随备份一起保存',
+                style: textTheme.bodySmall),
+            const SizedBox(height: 16),
+            _themeModeSection(context, ref),
+            const SizedBox(height: 20),
+            _textScaleSection(context, ref),
+            const SizedBox(height: 20),
+            _accentSection(context, ref),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 主题模式：三选一。SegmentedButton 的选中态比 RadioListTile 更紧凑直观。
+  Widget _themeModeSection(BuildContext context, WidgetRef ref) {
+    final mode = ref.watch(themeModeProvider);
+    final textTheme = Theme.of(context).textTheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('主题模式', style: textTheme.titleSmall),
+        const SizedBox(height: 8),
+        SegmentedButton<ThemeMode>(
+          selected: {mode},
+          onSelectionChanged: (selection) async {
+            // 改动立即写库并生效（main.dart 已接好线：Provider 一变整 App 跟着变）
+            await ref.read(themeModeProvider.notifier).set(selection.single);
+          },
+          segments: const [
+            ButtonSegment(value: ThemeMode.system, label: Text('跟随系统')),
+            ButtonSegment(value: ThemeMode.light, label: Text('浅色')),
+            ButtonSegment(value: ThemeMode.dark, label: Text('深色')),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Text('深色模式更省电；跟随系统会按设备外观设置自动切换',
+            style: textTheme.bodySmall),
+      ],
+    );
+  }
+
+  /// 字体缩放：从 TextScaleController.options 四档里选，标签用口语档位
+  /// （更小/标准/较大/超大）而非原始数字，避免暴露 0.85 这种实现细节。
+  Widget _textScaleSection(BuildContext context, WidgetRef ref) {
+    final scale = ref.watch(textScaleProvider);
+    final textTheme = Theme.of(context).textTheme;
+    final labels = <double, String>{
+      0.85: '更小',
+      1.0: '标准',
+      1.15: '较大',
+      1.3: '超大',
+    };
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('字体缩放', style: textTheme.titleSmall),
+        const SizedBox(height: 8),
+        SegmentedButton<double>(
+          selected: {scale},
+          onSelectionChanged: (selection) async {
+            await ref.read(textScaleProvider.notifier).set(selection.single);
+          },
+          segments: [
+            for (final option in TextScaleController.options)
+              ButtonSegment(
+                value: option,
+                label: Text(labels[option] ?? '${option * 100}%'),
+              ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Text('仅调整本 App 内文字大小，不影响系统与其他应用',
+            style: textTheme.bodySmall),
+      ],
+    );
+  }
+
+  /// 强调色：横向排列五个预设色块，点击切换；选中态用主题主色描边
+  /// + 主题表面色底的小对勾标记（均取自 Theme，不写死）。
+  Widget _accentSection(BuildContext context, WidgetRef ref) {
+    final current = ref.watch(accentSeedProvider);
+    final textTheme = Theme.of(context).textTheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('强调色', style: textTheme.titleSmall),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 14,
+          runSpacing: 14,
+          children: [
+            for (final preset in AppTheme.accents)
+              _accentSwatch(
+                context: context,
+                preset: preset,
+                selected: preset.color.toARGB32() == current,
+                onTap: () async {
+                  await ref
+                      .read(accentSeedProvider.notifier)
+                      .set(preset.color.toARGB32());
+                },
+              ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Text('强调色用于按钮、选中态等主色点缀', style: textTheme.bodySmall),
+      ],
+    );
+  }
+
+  /// 单个强调色色块。色块本体用预设色（这是它的职责），但选中描边与对勾标记
+  /// 一律取自 Theme，保证浅色/深色下都清晰可见、不写死颜色。
+  Widget _accentSwatch({
+    required BuildContext context,
+    required AccentPreset preset,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+    return Tooltip(
+      message: preset.name,
+      child: InkWell(
+        key: Key('accent-${preset.name}'),
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: ShapeDecoration(
+                color: preset.color,
+                shape: CircleBorder(
+                  side: selected
+                      ? BorderSide(color: scheme.primary, width: 3)
+                      : const BorderSide(color: Colors.transparent),
+                ),
+              ),
+            ),
+            if (selected)
+              // 对勾标记：底色用主题表面色、勾用主题主色，二者都取自 Theme
+              DecoratedBox(
+                decoration: ShapeDecoration(
+                  color: scheme.surface,
+                  shape: const CircleBorder(),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(3),
+                  child: Icon(Icons.check, size: 14, color: scheme.primary),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

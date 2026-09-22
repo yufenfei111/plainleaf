@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import '../features/detail/presentation/entry_detail_page.dart';
 import '../features/editor/presentation/drafts_page.dart';
 import '../features/editor/presentation/editor_page.dart';
+import '../features/importer/presentation/markdown_import_page.dart';
 import '../features/editor/presentation/trash_page.dart';
 import '../features/search/presentation/search_page.dart';
 import '../features/gallery/presentation/gallery_page.dart';
@@ -32,6 +33,10 @@ GoRouter buildAppRouter() => GoRouter(
           EditorPage(entryId: int.tryParse('${state.uri.queryParameters['id']}')),
     ),
     GoRoute(path: '/drafts', builder: (_, _) => const DraftsPage()),
+    GoRoute(
+      path: '/import',
+      builder: (_, _) => const MarkdownImportPage(),
+    ),
     GoRoute(path: '/search', builder: (_, _) => const SearchPage()),
     GoRoute(
       path: '/detail',
