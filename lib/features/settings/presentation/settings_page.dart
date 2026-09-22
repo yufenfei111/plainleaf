@@ -77,7 +77,10 @@ class SettingsPage extends ConsumerWidget {
           ListTile(
             leading: const Icon(Icons.info_outline),
             title: const Text('关于素页'),
-            subtitle: const Text('本地优先的图文记录工具 · v0.1.0'),
+            // 版本号必须与 pubspec.yaml 的 version 同步手改。
+            // 之前长期停在 v0.1.0，加上 versionCode 也一直是 1，
+            // 导致"新包装上去看不出变化"——用户没有任何可判断的版本标识。
+            subtitle: const Text('本地优先的图文记录工具 · v0.2.0（M2）'),
           ),
         ],
       ),
