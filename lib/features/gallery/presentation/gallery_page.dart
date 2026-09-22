@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as p;
 
 import '../../../app/providers.dart';
@@ -78,9 +79,16 @@ class _GalleryPageState extends ConsumerState<GalleryPage> {
             );
           }
           final groups = _groupByMonth(assets);
-          final hasMore = ref.watch(galleryProvider.notifier).hasMore;
-          return CustomScrollView(
+          final notifier = ref.watch(galleryProvider.notifier);
+          final hasMore = notifier.hasMore;
+          final loadMoreError = notifier.loadMoreError;
+          return RefreshIndicator(
+            onRefresh: () => ref.read(galleryProvider.notifier).refresh(),
+            child: CustomScrollView(
             controller: _scroll,
+            // 下拉刷新在空内容时也要可用：physics 必须始终可拉伸，
+            // 否则数据量不足一屏时 RefreshIndicator 拉不出来。
+            physics: const AlwaysScrollableScrollPhysics(),
             scrollCacheExtent: const ScrollCacheExtent.viewport(1.0),
             slivers: [
               for (final g in groups) ...[
@@ -99,6 +107,12 @@ class _GalleryPageState extends ConsumerState<GalleryPage> {
                         asset: g.items[i],
                         root: root,
                         size: _cellSize,
+                        onTap: () {
+                          final entryId = g.items[i].entryId;
+                          if (entryId == null) return;
+                          // 相册里的图此前点不动；点开所属记录详情才是用户预期
+                          context.push('/detail?id=$entryId');
+                        },
                       ),
                       childCount: g.items.length,
                     ),
@@ -109,21 +123,30 @@ class _GalleryPageState extends ConsumerState<GalleryPage> {
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 20),
                   child: Center(
-                    child: hasMore
-                        ? const SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Text(
-                            '共 ${assets.length} 张',
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
+                    child: switch ((hasMore, loadMoreError)) {
+                      // 续拉失败：保留已加载内容，只在这里给重试入口
+                      (_, _?) => TextButton.icon(
+                          icon: const Icon(Icons.refresh, size: 18),
+                          label: const Text('加载失败，点击重试'),
+                          onPressed: () =>
+                              ref.read(galleryProvider.notifier).loadMore(),
+                        ),
+                      (true, _) => const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      _ => Text(
+                          '共 ${assets.length} 张',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                    },
                   ),
                 ),
               ),
               const SliverToBoxAdapter(child: SizedBox(height: 80)),
             ],
+            ),
           );
         },
       ),
@@ -178,11 +201,13 @@ class _GridTile extends StatelessWidget {
     required this.asset,
     required this.root,
     required this.size,
+    required this.onTap,
   });
 
   final GalleryAsset asset;
   final String? root;
   final double size;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -195,13 +220,16 @@ class _GridTile extends StatelessWidget {
       borderRadius: BorderRadius.circular(8),
       child: root == null
           ? placeholder
-          : Image.file(
-              File(p.join(root!, rel)),
-              fit: BoxFit.cover,
-              cacheWidth: (size * dpr).round(),
-              errorBuilder: (_, _, _) => Container(
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                child: const Icon(Icons.broken_image_outlined),
+          : GestureDetector(
+              onTap: onTap,
+              child: Image.file(
+                File(p.join(root!, rel)),
+                fit: BoxFit.cover,
+                cacheWidth: (size * dpr).round(),
+                errorBuilder: (_, _, _) => Container(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  child: const Icon(Icons.broken_image_outlined),
+                ),
               ),
             ),
     );

@@ -15,6 +15,11 @@ final notebooksStreamProvider = StreamProvider<List<NotebookItem>>((ref) {
   return ref.watch(notebookRepositoryProvider).watchNotebooks();
 });
 
+/// 笔记本 id → 条目数（W10）：整页一次 GROUP BY，tile 不再各自 FutureBuilder
+final notebookCountsProvider = StreamProvider<Map<int, int>>((ref) {
+  return ref.watch(notebookRepositoryProvider).watchEntryCountsByNotebook();
+});
+
 /// 标签行视图（避免 UI 直接命名 Drift 生成类——分层红线）
 class TagItem {
   const TagItem({required this.id, required this.name, this.parentId});

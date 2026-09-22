@@ -5,6 +5,9 @@ import 'package:uuid/uuid.dart';
 
 import '../../../../app/providers.dart';
 import '../../../shared/widgets/empty_state.dart';
+import '../../timeline/domain/entities/timeline_filter.dart';
+import '../../timeline/presentation/providers/timeline_providers.dart';
+import '../domain/entities/notebook_item.dart';
 import 'providers/notebooks_providers.dart';
 
 /// 笔记本 Tab（W5：issue #10 分类管理 + issue #11 标签管理）
@@ -82,6 +85,12 @@ class NotebooksPage extends ConsumerWidget {
     );
   }
 
+  /// 对话框统一入口：只负责弹窗与拿到结果，**不碰页面路由**。
+  ///
+  /// 历史缺陷：三个对话框结尾都写了 `context.pop()`，而那个 context 是页面级
+  /// 的（不是 dialog 内部的），等于在关闭弹窗后又把整个笔记本页弹掉——
+  /// 用户建完一个笔记本会发现自己被踢回上一个页面。对话框只需 `Navigator.pop`
+  /// 自己（由 showDialog 的 builder 内部 context 完成），外层不做任何 pop。
   Future<void> _createNotebookDialog(BuildContext context, db) async {
     final ctrl = TextEditingController();
     final space = <String>['custom'];
@@ -114,14 +123,12 @@ class NotebooksPage extends ConsumerWidget {
         ),
       ),
     );
-    if (ok == true && ctrl.text.trim().isNotEmpty) {
-      await db.notebooksDao.create(
-        uuid: const Uuid().v4(),
-        name: ctrl.text.trim(),
-        space: space.first,
-      );
-    }
-    if (context.mounted) context.pop();
+    if (ok != true || ctrl.text.trim().isEmpty) return;
+    await db.notebooksDao.create(
+      uuid: const Uuid().v4(),
+      name: ctrl.text.trim(),
+      space: space.first,
+    );
   }
 
   Future<void> _createTagDialog(BuildContext context, db, int? parentId) async {
@@ -138,20 +145,18 @@ class NotebooksPage extends ConsumerWidget {
         ],
       ),
     );
-    if (ok == true && ctrl.text.trim().isNotEmpty) {
-      try {
-        await db.tagsDao.create(
-          uuid: const Uuid().v4(),
-          name: ctrl.text.trim(),
-        );
-      } on Exception {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('创建失败：名称可能已存在')));
-        }
+    if (ok != true || ctrl.text.trim().isEmpty) return;
+    try {
+      await db.tagsDao.create(
+        uuid: const Uuid().v4(),
+        name: ctrl.text.trim(),
+      );
+    } on Exception {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('创建失败：名称可能已存在')));
       }
     }
-    if (context.mounted) context.pop();
   }
 
   Future<void> _renameTagDialog(BuildContext context, db, int id, String old) async {
@@ -167,55 +172,53 @@ class NotebooksPage extends ConsumerWidget {
         ],
       ),
     );
-    if (ok == true && ctrl.text.trim().isNotEmpty) {
-      await db.tagsDao.rename(id, ctrl.text.trim());
-    }
-    if (context.mounted) context.pop();
+    if (ok != true || ctrl.text.trim().isEmpty) return;
+    await db.tagsDao.rename(id, ctrl.text.trim());
   }
 }
 
+/// 笔记本行（W10）：角标取自整页一次性的计数流，行内不再单独查库。
+/// 点击行为补全——此前是空的 onTap，点下去毫无反应；现在跳到时间轴并按该本筛选。
 class _NotebookTile extends ConsumerWidget {
   const _NotebookTile({required this.notebook});
 
-  final dynamic notebook;
+  final NotebookItem notebook;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final db = ref.read(dbProvider);
-    return FutureBuilder<int>(
-      future: db.notebooksDao.countEntries(notebook.id),
-      builder: (context, snap) {
-        final count = snap.data ?? 0;
-        return ListTile(
-          leading: Icon(
-            notebook.space == 'study'
-                ? Icons.school_outlined
-                : notebook.space == 'life'
-                    ? Icons.home_outlined
-                    : Icons.folder_outlined,
-            color: Theme.of(context).colorScheme.primary,
+    final count = ref.watch(notebookCountsProvider).valueOrNull?[notebook.id] ?? 0;
+    return ListTile(
+      leading: Icon(
+        notebook.space == 'study'
+            ? Icons.school_outlined
+            : notebook.space == 'life'
+                ? Icons.home_outlined
+                : Icons.folder_outlined,
+        color: Theme.of(context).colorScheme.primary,
+      ),
+      title: Text(notebook.name),
+      subtitle: notebook.space == 'custom' ? const Text('自定义') : null,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('$count 条',
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: Theme.of(context).hintColor)),
+          IconButton(
+            icon: const Icon(Icons.delete_outline, size: 20),
+            tooltip: '删除笔记本',
+            onPressed: () => db.notebooksDao.softDelete(notebook.id),
           ),
-          title: Text(notebook.name),
-          subtitle: notebook.space == 'custom' ? const Text('自定义') : null,
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('$count 条',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: Theme.of(context).hintColor)),
-              IconButton(
-                icon: const Icon(Icons.delete_outline, size: 20),
-                tooltip: '删除笔记本',
-                onPressed: () => db.notebooksDao.softDelete(notebook.id),
-              ),
-            ],
-          ),
-          onTap: () {
-            // W7：笔记本详情（筛选视图）
-          },
-        );
+        ],
+      ),
+      onTap: () {
+        // 语义：「看这本里的内容」——设好筛选再回时间轴，比空转更符合直觉
+        ref.read(timelineFilterProvider.notifier).state =
+            TimelineFilter(notebookId: notebook.id);
+        context.go('/timeline');
       },
     );
   }

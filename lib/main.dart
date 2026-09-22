@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_quill/flutter_quill.dart';
@@ -12,15 +14,14 @@ import 'core/db/seed.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  _tuneImageCache();
 
   final db = PlainLeafDatabase();
   await DemoSeed.maybeSeed(db);
-  // 回收站 30 天清理（§4.3）：启动时静默执行，失败不阻塞启动
-  try {
-    await db.entriesDao.purgeExpiredTrash();
-  } on Exception {
-    // 首启/只读场景静默忽略；清理失败不得丢用户数据
-  }
+  // 回收站 30 天清理（§4.3）：W10 起不再阻塞首帧。
+  // 它只是「删掉 30 天前就该没了的软删行」，晚几百毫秒执行没有任何可见影响，
+  // 却实打实地把启动时间按在启动路径上——冷启动每多一次事务就多一次 IO 等待。
+  unawaited(_purgeExpiredTrash(db));
 
   runApp(
     ProviderScope(
@@ -28,6 +29,28 @@ void main() async {
       child: const PlainLeafApp(),
     ),
   );
+}
+
+/// 回收站过期清理（失败静默；清理失败不得丢用户数据）
+Future<void> _purgeExpiredTrash(PlainLeafDatabase db) async {
+  try {
+    await db.entriesDao.purgeExpiredTrash();
+  } on Exception {
+    // 首启/只读场景忽略
+  }
+}
+
+/// 解码缓存容量调优（W10 首屏/滑动性能）
+///
+/// 默认 ImageCache 上限是 1000 张 / 100MB。列表与相册滑动时，缩略图会被
+/// 大批淘汰再重新解码——滑回去时每张都要重跑一次解码，是「来回滑动掉帧」的
+/// 直接原因。按实际使用（thumb 长边 400 ≈ 0.6MB/张）收紧张数、放宽字节，
+/// 让缓存真正服务于「最近看过的两屏」而不是一堆永不复用的大图。
+void _tuneImageCache() {
+  final cache = PaintingBinding.instance.imageCache;
+  cache
+    ..maximumSize = 400
+    ..maximumSizeBytes = 96 << 20; // 96 MB
 }
 
 /// 素页 PlainLeaf 根组件

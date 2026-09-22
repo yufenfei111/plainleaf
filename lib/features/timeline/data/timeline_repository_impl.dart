@@ -84,6 +84,31 @@ class LocalTimelineRepository implements TimelineRepository {
   }
 
   @override
+  Future<void> updateEntryMeta(
+    int id, {
+    EntryType? type,
+    int? notebookId,
+    bool clearNotebook = false,
+    int? mood,
+    bool clearMood = false,
+  }) async {
+    try {
+      await _dao.updateEntryMeta(
+        id,
+        type: type?.name,
+        notebookId: clearNotebook
+            ? const Value(null)
+            : (notebookId == null ? const Value.absent() : Value(notebookId)),
+        mood: clearMood
+            ? const Value(null)
+            : (mood == null ? const Value.absent() : Value(mood)),
+      );
+    } on Exception catch (error) {
+      throw DatabaseException('更新记录属性失败', cause: error);
+    }
+  }
+
+  @override
   Future<void> softDelete(int id) async {
     try {
       await _dao.softDelete(id);

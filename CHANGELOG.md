@@ -100,6 +100,40 @@
   避免每个 Widget 各写一遍 try/catch
 - 测试：test/w7_test.dart 12 例；全套 **50/50 passed**，core 手写覆盖率 77.2% → **79.3%**
 
+### Fixed（阶段 2 · W10 自检：性能 / 交互 / 缺陷修复，2026-09-22）
+
+自检方式：全量代码走查（61 个 dart 文件）+ `dart analyze --fatal-infos` + `flutter test`；
+完整问题清单、修复方案与后续计划见 `docs/verification-w10.md`。
+
+**P0 缺陷**
+- 编辑器图片全部破图：附件相对路径未拼支持目录；改为「thumb 优先 + 支持目录拼接 +
+  `cacheWidth=72×DPR`」，挂接后回读库里的 thumbPath（不再用 image_picker 的临时缓存路径）
+- 新建/重命名笔记本或标签后整页被弹走：对话框收尾误用页面级 context 调 `pop()`
+- 相册续拉失败清空已加载列表：改为保留数据 + 单独暴露 `loadMoreError`，底部给重试入口
+- Markdown 导出只 print 不落文件：改为写入 `supportDir/export/素页导出-yyyyMMdd-HHmm.md`
+
+**P1 缺陷 / 性能**
+- 新建记录首帧的输入被静默丢弃（id 未就绪）→ 标记待存，id 就绪立即冲刷
+- 退出编辑器丢最后 500ms 输入 → `dispose` 先 flush 再关门
+- 点「完成」偶发内容停在旧版本 → 新增 `Debouncer.flushAsync`，await 内容落库后再置 status
+- 编辑器无法设置类型 / 笔记本 / 心情 → 新增 `updateEntryMeta`（DAO→Repository）+ 属性条
+- 笔记本页角标闪 0 且 N 次查询 → 新增 `watchEntryCountsByNotebook()`（一条 GROUP BY + 流）
+- 笔记本点击无反应 → 设筛选并跳时间轴
+- 搜索结果落编辑器 → 改跳 `/detail?id=N`
+- 详情页富文本嵌套滚动（QuillEditor `scrollable:false`）；全屏大图也限制解码尺寸
+- 时间轴图片失败态从「空白色块」改为破图图标（可归因）
+- 冷启动：回收站清理移出首帧路径（`unawaited`）
+- 相册图片点不动 → 跳所属记录详情
+
+**交互 / 渲染打磨**
+- 统一页面过渡动画（200ms 淡入 + 1.5% 上移，仅全屏路由）：`app/transitions.dart`
+- 卡片缩略图 → 详情首图 Hero 共享元素（`entry-thumb-<id>`）
+- 保存状态 `AnimatedSwitcher`；相册下拉刷新（`AlwaysScrollableScrollPhysics`）
+- AppBar 图标语义修正（草稿箱 `drafts_outlined` / 回收站 `restore_from_trash`）
+- `ImageCache` 调为 400 张 / 96MB，减少来回滑动时的重复解码
+
+- 测试：test/w10_fixes_test.dart 5 例；全套 **81/81 passed**，`dart analyze --fatal-infos` 0 issue
+
 ## [0.1.0] - unreleased
 
 - M1 目标（2026-10-11）：MVP 记录内核（编辑器/图片管线/搜索/备份），发布 v0.1.0-alpha tag

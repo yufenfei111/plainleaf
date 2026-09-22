@@ -9,6 +9,10 @@ class LocalNotebookRepository implements NotebookRepository {
   final NotebooksDao _dao;
 
   @override
+  Stream<Map<int, int>> watchEntryCountsByNotebook() =>
+      _dao.watchEntryCountsByNotebook();
+
+  @override
   Stream<List<NotebookItem>> watchNotebooks() {
     return _dao.watchNotebooks().map(
           (rows) => rows

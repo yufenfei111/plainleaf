@@ -12,6 +12,7 @@ import '../features/settings/presentation/settings_page.dart';
 import '../features/study/presentation/study_page.dart';
 import '../features/timeline/presentation/timeline_page.dart';
 import 'home_page.dart';
+import 'transitions.dart';
 
 /// 底部 5 Tab 信息架构（计划书 §5.1，DEVELOPMENT.md §6 Day 4）：
 /// ① 时间轴（首页）② 相册 ③ 学习 ④ 笔记本 ⑤ 我的
@@ -29,25 +30,40 @@ GoRouter buildAppRouter() => GoRouter(
   routes: [
     GoRoute(
       path: '/editor',
-      builder: (context, state) =>
-          EditorPage(entryId: int.tryParse('${state.uri.queryParameters['id']}')),
+      pageBuilder: (context, state) => fadeSlidePage(
+        state,
+        EditorPage(
+            entryId: int.tryParse('${state.uri.queryParameters['id']}')),
+      ),
     ),
-    GoRoute(path: '/drafts', builder: (_, _) => const DraftsPage()),
+    GoRoute(
+      path: '/drafts',
+      pageBuilder: (context, state) =>
+          fadeSlidePage(state, const DraftsPage()),
+    ),
     GoRoute(
       path: '/import',
-      builder: (_, _) => const MarkdownImportPage(),
+      pageBuilder: (context, state) =>
+          fadeSlidePage(state, const MarkdownImportPage()),
     ),
-    GoRoute(path: '/search', builder: (_, _) => const SearchPage()),
+    GoRoute(
+      path: '/search',
+      pageBuilder: (context, state) =>
+          fadeSlidePage(state, const SearchPage()),
+    ),
     GoRoute(
       path: '/detail',
-      builder: (context, state) {
+      pageBuilder: (context, state) {
         // 缺 id 或非法 id 时传 -1：详情页查不到记录会走「不存在」空态，
         // 而不是在此处抛异常把整个路由树搞崩。
         final id = int.tryParse(state.uri.queryParameters['id'] ?? '');
-        return EntryDetailPage(entryId: id ?? -1);
+        return fadeSlidePage(state, EntryDetailPage(entryId: id ?? -1));
       },
     ),
-    GoRoute(path: '/trash', builder: (_, _) => const TrashPage()),
+    GoRoute(
+      path: '/trash',
+      pageBuilder: (context, state) => fadeSlidePage(state, const TrashPage()),
+    ),
     StatefulShellRoute.indexedStack(
       builder: (context, state, shell) => HomePage(shell: shell),
       branches: [

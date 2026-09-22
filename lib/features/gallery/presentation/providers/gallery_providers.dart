@@ -16,9 +16,17 @@ class GalleryNotifier extends AsyncNotifier<List<GalleryAsset>> {
 
   bool _hasMore = true;
   bool _loading = false;
+  Object? _loadMoreError;
 
   bool get hasMore => _hasMore;
   bool get isLoadingMore => _loading;
+
+  /// 续拉失败的原因（W10 修复）
+  ///
+  /// 原实现在续拉出错时把 state 整个置成 AsyncError：页面立刻从「已滑到第 300 张」
+  /// 变成一张错误页，**已加载的数据全丢**。续拉失败只是「下一页没取到」，
+  /// 不该推翻已经握在手里的结果——改为保留数据 + 单独暴露错误供底部重试。
+  Object? get loadMoreError => _loadMoreError;
 
   @override
   Future<List<GalleryAsset>> build() async {
@@ -34,16 +42,18 @@ class GalleryNotifier extends AsyncNotifier<List<GalleryAsset>> {
   Future<void> loadMore() async {
     if (!_hasMore || _loading) return;
     _loading = true;
+    final current = state.valueOrNull ?? const <GalleryAsset>[];
     try {
-      final current = state.valueOrNull ?? const <GalleryAsset>[];
       final more = await ref
           .read(galleryRepositoryProvider)
           .page(limit: pageSize, offset: current.length);
       _hasMore = more.length >= pageSize;
+      _loadMoreError = null;
       state = AsyncData([...current, ...more]);
-    } on Exception catch (error, stack) {
-      // 保留已加载的数据，只把错误透出（错误三层透传第二层）
-      state = AsyncError(error, stack);
+    } on Object catch (error) {
+      // 保留已加载的数据，只把错误单独透出（页面底部给重试入口）
+      _loadMoreError = error;
+      state = AsyncData(current);
     } finally {
       _loading = false;
     }
@@ -51,6 +61,7 @@ class GalleryNotifier extends AsyncNotifier<List<GalleryAsset>> {
 
   Future<void> refresh() async {
     state = const AsyncLoading();
+    _loadMoreError = null;
     state = await AsyncValue.guard(() async {
       _hasMore = true;
       final first = await ref

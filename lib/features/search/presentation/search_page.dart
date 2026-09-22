@@ -207,7 +207,9 @@ class _SearchPageState extends ConsumerState<SearchPage> {
           subtitle: _hitText(context, h.plainText,
               maxLines: 2, base: Theme.of(context).textTheme.bodySmall),
           trailing: Text(_typeLabels[h.type] ?? h.type),
-          onTap: () => context.push('/editor?id=${h.id}'),
+          // W10：搜索结果点进去是「看这条」，不是「改这条」——
+          // 落进编辑器会让用户误以为要编辑，且容易误触改到内容。
+          onTap: () => context.push('/detail?id=${h.id}'),
         );
       },
     );

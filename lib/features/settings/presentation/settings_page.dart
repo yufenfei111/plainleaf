@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:path/path.dart' as p;
 
 import '../../../app/providers.dart';
 import '../../../app/theme.dart';
@@ -278,22 +279,36 @@ class SettingsPage extends ConsumerWidget {
     }
   }
 
+  /// 导出全部记录为 Markdown（W10 修复：此前只把内容 print 到控制台，
+  /// 用户在 App 里点了「导出」却拿不到任何文件——功能等于没做完。
+  /// 现在落到 App 私有目录的 export/ 下，并在提示里给出完整路径。）
   Future<void> _exportMarkdown(BuildContext context, WidgetRef ref) async {
     final messenger = ScaffoldMessenger.of(context);
     try {
       final exporter = MarkdownExporter(ref.read(dbProvider));
       final md = await exporter.exportAll();
+      final dir = await ref.read(mediaStorageProvider).supportDir();
+      final exportDir = Directory(p.join(dir.path, 'export'));
+      if (!exportDir.existsSync()) exportDir.createSync(recursive: true);
+      final file = File(p.join(exportDir.path, _exportFileName()));
+      await file.writeAsString(md, flush: true);
+
       final lineCount = md.split('\n').length;
       messenger.showSnackBar(SnackBar(
-        content: Text('导出成功：$lineCount 行 Markdown（$md 内容在控制台预览版）'),
-        duration: const Duration(seconds: 4),
+        content: Text('已导出 $lineCount 行：${file.path}'),
+        duration: const Duration(seconds: 6),
       ));
-      // M1 形态：文本导出成功即达成「导出不锁定」验收；写文件对话框 W6 用 file_selector 打磨
-      // ignore: avoid_print
-      print('---- PLAINLEAF MARKDOWN EXPORT (${md.length} chars) ----');
     } on Exception catch (error) {
       messenger.showSnackBar(SnackBar(content: Text('导出失败：$error')));
     }
+  }
+
+  /// 导出文件名：素页导出-20260922-2215.md（避免同名覆盖历史导出）
+  String _exportFileName() {
+    final now = DateTime.now();
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '素页导出-${now.year}${two(now.month)}${two(now.day)}'
+        '-${two(now.hour)}${two(now.minute)}.md';
   }
 
   /// 补齐历史缩略图（W6 遗留 entry：`backfillDerived` 已就绪但此前没有入口，

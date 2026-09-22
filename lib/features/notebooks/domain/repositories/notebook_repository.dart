@@ -4,4 +4,7 @@ import '../entities/notebook_item.dart';
 abstract interface class NotebookRepository {
   /// 未删除笔记本：按 sortIndex 排序（生活/学习双空间 + 自定义）
   Stream<List<NotebookItem>> watchNotebooks();
+
+  /// 笔记本 id → 其下已发布条目数（一次 GROUP BY，列表角标用）
+  Stream<Map<int, int>> watchEntryCountsByNotebook();
 }

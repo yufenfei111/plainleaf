@@ -157,7 +157,11 @@ class _DetailBody extends StatelessWidget {
           assets.when(
             data: (list) => list.isEmpty
                 ? const SizedBox.shrink()
-                : _ImageGallery(assets: list, supportDir: supportDir.value),
+                : _ImageGallery(
+                    assets: list,
+                    supportDir: supportDir.value,
+                    entryId: entry.id,
+                  ),
             loading: () => const SizedBox.shrink(),
             error: (_, _) => const SizedBox.shrink(),
           ),
@@ -188,6 +192,10 @@ class _RichTextView extends StatefulWidget {
   @override
   State<_RichTextView> createState() => _RichTextViewState();
 }
+
+/// 首图 Hero 标签（与时间轴卡片共用，W10 过渡动画）
+/// 结构：`entry-thumb-<条目id>`；详情页只有第一张套 Hero，避免同页多个相同 tag。
+String entryThumbHeroTag(int entryId) => 'entry-thumb-$entryId';
 
 class _RichTextViewState extends State<_RichTextView> {
   QuillController? _controller;
@@ -229,7 +237,9 @@ class _RichTextViewState extends State<_RichTextView> {
         child: QuillEditor.basic(
           controller: _controller!,
           config: const QuillEditorConfig(
-            scrollable: true,
+            // 外层已经是 SingleChildScrollView：编辑器自己再开一个滚动视图
+            // 会形成嵌套滚动——手势要抢、布局要两次测量，长正文下明显发涩。
+            scrollable: false,
             showCursor: false,
             padding: EdgeInsets.zero,
           ),
@@ -251,10 +261,15 @@ class _RichTextViewState extends State<_RichTextView> {
 /// 每张图都按显示宽度×设备像素比限制解码尺寸（cacheWidth），避免原图尺寸解码
 /// 造成内存尖峰；点击打开全屏 Dialog，内部 InteractiveViewer 支持双指缩放。
 class _ImageGallery extends StatefulWidget {
-  const _ImageGallery({required this.assets, required this.supportDir});
+  const _ImageGallery({
+    required this.assets,
+    required this.supportDir,
+    required this.entryId,
+  });
 
   final List<EntryAsset> assets;
   final String? supportDir;
+  final int entryId;
 
   @override
   State<_ImageGallery> createState() => _ImageGalleryState();
@@ -299,15 +314,22 @@ class _ImageGalleryState extends State<_ImageGallery> {
             itemBuilder: (context, index) {
               // 必须走 preferredRelPath（medium→thumb→原图），绝不直接解码原图。
               final abs = p.join(root, items[index].preferredRelPath);
-              return GestureDetector(
-                onTap: () => _openFullscreen(context, abs),
-                child: Image.file(
-                  File(abs),
-                  cacheWidth: cacheWidth,
-                  fit: BoxFit.contain,
-                  errorBuilder: (_, _, _) =>
-                      const Center(child: Icon(Icons.broken_image)),
-                ),
+              final image = Image.file(
+                File(abs),
+                cacheWidth: cacheWidth,
+                fit: BoxFit.contain,
+                errorBuilder: (_, _, _) =>
+                    const Center(child: Icon(Icons.broken_image)),
+              );
+              final page = GestureDetector(
+                onTap: () => _openFullscreen(context, abs, cacheWidth),
+                child: image,
+              );
+              // 只有第一张接 Hero：与时间轴卡片共享标签，形成「卡片→详情」的连续动画
+              if (index != 0) return page;
+              return Hero(
+                tag: entryThumbHeroTag(widget.entryId),
+                child: page,
               );
             },
           ),
@@ -324,8 +346,12 @@ class _ImageGalleryState extends State<_ImageGallery> {
     );
   }
 
-  /// 全屏查看：InteractiveViewer 支持缩放/平移；全屏是一次性的，不再限制 cacheWidth。
-  void _openFullscreen(BuildContext context, String abs) {
+  /// 全屏查看：InteractiveViewer 支持缩放/平移。
+  ///
+  /// W10：即便是全屏**也**限制解码尺寸。屏幕物理宽度通常 1080–1440px，
+  /// 而 medium 长边 1600 已绰绰有余；若 preferredRelPath 回退到原图（历史数据未回填），
+  /// 不加限制就会把 4000px 数 MB 的原图整个解码进内存，放大时很容易触发 OOM。
+  void _openFullscreen(BuildContext context, String abs, int cacheWidth) {
     showDialog(
       context: context,
       builder: (_) => Dialog.fullscreen(
@@ -335,6 +361,7 @@ class _ImageGalleryState extends State<_ImageGallery> {
               child: Center(
                 child: Image.file(
                   File(abs),
+                  cacheWidth: cacheWidth,
                   fit: BoxFit.contain,
                   errorBuilder: (_, _, _) =>
                       const Center(child: Icon(Icons.broken_image)),

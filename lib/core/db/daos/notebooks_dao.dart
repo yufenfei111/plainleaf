@@ -62,6 +62,26 @@ class NotebooksDao extends DatabaseAccessor<PlainLeafDatabase>
     });
   }
 
+  /// 一次性统计**全部**笔记本下的条目数（W10 性能修复）
+  ///
+  /// 原实现是每个 tile 各自 FutureBuilder 调 [countEntries]：
+  /// ① N 个笔记本 = N 次查询；② FutureBuilder 每次 rebuild 都重建 Future，
+  /// 页面任意一次刷新（切 Tab、键盘弹出、流推送）都会把 N 次查询重放一遍，
+  /// 角标还会先闪回 0 再跳到真实值。改成一条 GROUP BY，且走 watch 保持实时。
+  Stream<Map<int, int>> watchEntryCountsByNotebook() {
+    final count = db.entries.id.count();
+    final query = selectOnly(db.entries)
+      ..addColumns([db.entries.notebookId, count])
+      ..where(db.entries.deleted.equals(false) &
+          db.entries.status.equals('normal'))
+      ..groupBy([db.entries.notebookId]);
+    return query.watch().map((rows) => <int, int>{
+          for (final row in rows)
+            if (row.read(db.entries.notebookId) case final int id)
+              id: row.read(count) ?? 0,
+        });
+  }
+
   /// 笔记本下未删除条目数（列表角标）
   Future<int> countEntries(int notebookId) {
     final count = db.entries.id.count();

@@ -11,6 +11,7 @@ import '../domain/entities/timeline_filter.dart';
 import '../domain/timeline_grouping.dart';
 import '../../../app/providers.dart';
 import '../../../shared/widgets/empty_state.dart';
+import '../../detail/presentation/entry_detail_page.dart' show entryThumbHeroTag;
 import '../../notebooks/presentation/providers/notebooks_providers.dart';
 import 'providers/timeline_providers.dart';
 
@@ -36,12 +37,14 @@ class TimelinePage extends ConsumerWidget {
             onPressed: () => context.push('/search'),
           ),
           IconButton(
-            icon: const Icon(Icons.edit_note),
+            // 原来用 edit_note，与「写新记录」的语义混在一起；drafts 图标更贴切
+            icon: const Icon(Icons.drafts_outlined),
             tooltip: '草稿箱',
             onPressed: () => context.push('/drafts'),
           ),
           IconButton(
-            icon: const Icon(Icons.delete_outline),
+            // delete_outline 看着像「删除当前内容」，实际入口是回收站
+            icon: const Icon(Icons.restore_from_trash),
             tooltip: '回收站',
             onPressed: () => context.push('/trash'),
           ),
@@ -291,7 +294,16 @@ class _ThumbTile extends StatelessWidget {
       File(p.join(root!, rel)),
       fit: BoxFit.cover,
       cacheWidth: (size * dpr).round(),
-      errorBuilder: (_, _, _) => const SizedBox.expand(),
+      // W10：此前失败态是「空白色块」——用户看到卡片左上空一块，
+      // 既不知道那是图片，也不知道它为什么空。给出破图图标，至少是可归因的状态。
+      errorBuilder: (_, _, _) => Container(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        child: Icon(
+          Icons.broken_image_outlined,
+          size: 20,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+      ),
     );
   }
 }
@@ -329,7 +341,11 @@ class _EntryCard extends ConsumerWidget {
                 ),
                 clipBehavior: Clip.antiAlias,
                 child: thumbRel != null
-                    ? _ThumbTile(rel: thumbRel, root: root, size: 52)
+                    // Hero：卡片缩略图飞向详情页大图，形成连续的空间感（W10）
+                    ? Hero(
+                        tag: entryThumbHeroTag(entry.id),
+                        child: _ThumbTile(rel: thumbRel, root: root, size: 52),
+                      )
                     : Icon(
                         switch (entry.type) {
                           EntryType.diary => Icons.edit_note,

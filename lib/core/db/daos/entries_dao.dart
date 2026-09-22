@@ -187,6 +187,33 @@ class EntriesDao extends DatabaseAccessor<PlainLeafDatabase>
     });
   }
 
+  /// 更新分类元数据（W10 编辑器属性条）：类型 / 笔记本 / 心情。
+  /// 只触碰这三列 + updatedAt/version，内容与 FTS 不受影响——
+  /// 改分类不重写 FTS，是因为 FTS 只索引标题与正文，分类变化不改变检索结果。
+  ///
+  /// [notebookId]/[mood] 用 drift 的 `Value` 三态：
+  /// absent（不动）/ Value(x)（设为 x）/ Value(null)（清空为 NULL）。
+  Future<void> updateEntryMeta(
+    int id, {
+    String? type,
+    Value<int?> notebookId = const Value.absent(),
+    Value<int?> mood = const Value.absent(),
+  }) {
+    return transaction(() async {
+      final row =
+          await (select(entries)..where((e) => e.id.equals(id))).getSingle();
+      await (update(entries)..where((e) => e.id.equals(id))).write(
+        EntriesCompanion(
+          type: type == null ? const Value.absent() : Value(type),
+          notebookId: notebookId,
+          mood: mood,
+          updatedAt: Value(DateTime.now()),
+          version: Value(row.version + 1),
+        ),
+      );
+    });
+  }
+
   /// 置顶开关：version 递增
   Future<void> setPinned(int id, {required bool pinned}) {
     return transaction(() async {

@@ -18,6 +18,18 @@ abstract interface class TimelineRepository {
   /// 更新记录内容：entries 内容列 + entries_fts 同一事务重写；version 递增
   Future<void> updateEntry(int id, EntryDraft draft);
 
+  /// 更新分类元数据（W10 编辑器属性条）：类型 / 笔记本 / 心情。
+  /// 三项都可省略（传 null 且 clearXxx=false 表示不动该列）；
+  /// clearNotebook / clearMood 用于「取消归属 / 不记录心情」这类显式清空。
+  Future<void> updateEntryMeta(
+    int id, {
+    EntryType? type,
+    int? notebookId,
+    bool clearNotebook = false,
+    int? mood,
+    bool clearMood = false,
+  });
+
   /// 软删除：deleted 置位 + FTS 行清除，同一事务；物理行保留（回收站预留）
   Future<void> softDelete(int id);
 
