@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../shared/widgets/empty_state.dart';
 import '../domain/entities/study_todo.dart';
 import 'providers/study_providers.dart';
 
@@ -16,8 +17,13 @@ class StudyPage extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('学习')),
       body: todos.when(
-        data: (list) =>
-            list.isEmpty ? const _EmptyView() : _TodoList(todos: list),
+        data: (list) => list.isEmpty
+            ? const EmptyState(
+                icon: Icons.task_alt,
+                title: '今天没有待办',
+                subtitle: 'W11 待办录入上线后，在这里安排学习计划',
+              )
+            : _TodoList(todos: list),
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) => Center(child: Text('加载失败：$error')),
       ),
@@ -50,36 +56,6 @@ class _TodoList extends ConsumerWidget {
             controlAffinity: ListTileControlAffinity.leading,
           ),
       ],
-    );
-  }
-}
-
-class _EmptyView extends StatelessWidget {
-  const _EmptyView();
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.task_alt,
-            size: 56,
-            color: Theme.of(context).colorScheme.primary.withAlpha(120),
-          ),
-          const SizedBox(height: 12),
-          Text('今天没有待办', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 4),
-          Text(
-            'W11 待办录入上线后，在这里安排学习计划',
-            style: Theme.of(context)
-                .textTheme
-                .bodyMedium
-                ?.copyWith(color: Theme.of(context).hintColor),
-          ),
-        ],
-      ),
     );
   }
 }

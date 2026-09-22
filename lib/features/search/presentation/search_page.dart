@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/providers.dart';
+import '../../../shared/widgets/empty_state.dart';
 
 /// 全文搜索页（W5，issue #12）
 /// FTS5 检索（entries_fts MATCH）+ 类型过滤；CJK 查询自动做前缀化预处理
@@ -179,11 +180,20 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     if (_searching) {
       return const Center(child: CircularProgressIndicator());
     }
+    // 两种空态必须区分：未输入（引导搜索）与无结果（引导换词）文案不同。
     if (_queryCtrl.text.trim().isNotEmpty && _hits.isEmpty) {
-      return const Center(child: Text('没有匹配的记录'));
+      return const EmptyState(
+        icon: Icons.search_off,
+        title: '没有匹配的记录',
+        subtitle: '换个关键词，或调整上方的类型筛选试试',
+      );
     }
     if (_hits.isEmpty) {
-      return const Center(child: Text('输入关键词开始搜索'));
+      return const EmptyState(
+        icon: Icons.search_outlined,
+        title: '输入关键词开始搜索',
+        subtitle: '支持按标题与正文全文检索',
+      );
     }
     return ListView.builder(
       padding: const EdgeInsets.only(bottom: 96),

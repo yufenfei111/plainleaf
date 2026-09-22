@@ -1,5 +1,6 @@
 import 'package:go_router/go_router.dart';
 
+import '../features/detail/presentation/entry_detail_page.dart';
 import '../features/editor/presentation/drafts_page.dart';
 import '../features/editor/presentation/editor_page.dart';
 import '../features/editor/presentation/trash_page.dart';
@@ -20,7 +21,8 @@ import 'home_page.dart';
 /// - /editor?id=N   编辑已有记录
 /// - /drafts        草稿箱
 /// - /trash         回收站
-/// 编辑器路由放在 shell 之外：全屏沉浸，不显示底部 Tab。
+/// - /detail?id=N   记录详情页（W8：medium 大图 + 富文本只读浏览）
+/// 编辑器与详情页路由放在 shell 之外：全屏沉浸，不显示底部 Tab。
 GoRouter buildAppRouter() => GoRouter(
   initialLocation: '/timeline',
   routes: [
@@ -31,6 +33,15 @@ GoRouter buildAppRouter() => GoRouter(
     ),
     GoRoute(path: '/drafts', builder: (_, _) => const DraftsPage()),
     GoRoute(path: '/search', builder: (_, _) => const SearchPage()),
+    GoRoute(
+      path: '/detail',
+      builder: (context, state) {
+        // 缺 id 或非法 id 时传 -1：详情页查不到记录会走「不存在」空态，
+        // 而不是在此处抛异常把整个路由树搞崩。
+        final id = int.tryParse(state.uri.queryParameters['id'] ?? '');
+        return EntryDetailPage(entryId: id ?? -1);
+      },
+    ),
     GoRoute(path: '/trash', builder: (_, _) => const TrashPage()),
     StatefulShellRoute.indexedStack(
       builder: (context, state, shell) => HomePage(shell: shell),

@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 
 import '../../../app/providers.dart';
+import '../../../shared/widgets/empty_state.dart';
 import '../domain/entities/gallery_asset.dart';
 import 'providers/gallery_providers.dart';
 
@@ -69,7 +70,13 @@ class _GalleryPageState extends ConsumerState<GalleryPage> {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) => _ErrorView(error: '$error'),
         data: (assets) {
-          if (assets.isEmpty) return const _EmptyView();
+          if (assets.isEmpty) {
+            return const EmptyState(
+              icon: Icons.photo_library_outlined,
+              title: '还没有图片',
+              subtitle: '在记录里拍照或选图，会汇总到这里',
+            );
+          }
           final groups = _groupByMonth(assets);
           final hasMore = ref.watch(galleryProvider.notifier).hasMore;
           return CustomScrollView(
@@ -197,34 +204,6 @@ class _GridTile extends StatelessWidget {
                 child: const Icon(Icons.broken_image_outlined),
               ),
             ),
-    );
-  }
-}
-
-class _EmptyView extends StatelessWidget {
-  const _EmptyView();
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.photo_library_outlined,
-              size: 56,
-              color: Theme.of(context).colorScheme.primary.withAlpha(120)),
-          const SizedBox(height: 12),
-          Text('还没有图片', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 4),
-          Text(
-            '在记录里拍照或选图，会汇总到这里',
-            style: Theme.of(context)
-                .textTheme
-                .bodyMedium
-                ?.copyWith(color: Theme.of(context).hintColor),
-          ),
-        ],
-      ),
     );
   }
 }

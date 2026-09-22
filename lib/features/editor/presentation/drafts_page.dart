@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../shared/widgets/empty_state.dart';
 import '../../timeline/presentation/providers/timeline_providers.dart';
 
 /// 草稿箱（W3，issue #5）：draft 记录列表，点击继续编辑，可发布/丢弃
@@ -17,7 +18,11 @@ class DraftsPage extends ConsumerWidget {
       body: drafts.when(
         data: (list) {
           if (list.isEmpty) {
-            return const Center(child: Text('没有草稿'));
+            return const EmptyState(
+              icon: Icons.edit_note,
+              title: '没有草稿',
+              subtitle: '新建一条记录，自动保存后会先进入草稿箱',
+            );
           }
           return ListView(
             padding: const EdgeInsets.only(top: 8, bottom: 96),

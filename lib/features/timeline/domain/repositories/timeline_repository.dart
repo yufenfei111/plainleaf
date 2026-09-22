@@ -1,3 +1,4 @@
+import '../entities/entry_asset.dart';
 import '../entities/timeline_entry.dart';
 import '../entities/timeline_filter.dart';
 
@@ -55,4 +56,12 @@ abstract interface class TimelineRepository {
 
   /// 补齐历史资产的缩略图（W4 期落库的图没有 thumb），返回处理条数
   Future<int> backfillDerived({int limit = 200});
+
+  /// 单条记录详情（W8 详情页）：不存在或已物理删除返回 null。
+  /// 与 [watchTimeline] 不同，这里不做 JOIN，笔记本名等派生字段不填充。
+  Future<TimelineEntry?> findEntryById(int id);
+
+  /// 条目下的全部图片资产，sortIndex 升序（W8 详情页图片浏览）。
+  /// assetsDao 未注入（纯文本场景）时返回空列表而非抛错。
+  Future<List<EntryAsset>> findAssetsByEntry(int entryId);
 }

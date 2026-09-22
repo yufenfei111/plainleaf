@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../../app/providers.dart';
+import '../../../shared/widgets/empty_state.dart';
 import 'providers/notebooks_providers.dart';
 
 /// 笔记本 Tab（W5：issue #10 分类管理 + issue #11 标签管理）
@@ -29,7 +30,15 @@ class NotebooksPage extends ConsumerWidget {
           return ListView(
             padding: const EdgeInsets.only(top: 8, bottom: 24),
             children: [
-              for (final n in list) _NotebookTile(notebook: n),
+              // 没有笔记本时给出统一空态引导；标签管理入口（下方）保持可用。
+              if (list.isEmpty)
+                const EmptyState(
+                  icon: Icons.book_outlined,
+                  title: '还没有笔记本',
+                  subtitle: '点击下方「+」按钮新建你的第一本笔记本',
+                )
+              else
+                for (final n in list) _NotebookTile(notebook: n),
               const Divider(height: 32),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),

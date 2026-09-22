@@ -8,6 +8,7 @@ import '../../../core/db/database.dart';
 import '../../../core/errors/app_exception.dart';
 import '../../../core/media/thumbnail_pipeline.dart';
 import '../../../core/storage/media_storage.dart';
+import '../domain/entities/entry_asset.dart';
 import '../domain/entities/timeline_entry.dart';
 import '../domain/entities/timeline_filter.dart';
 import '../domain/repositories/timeline_repository.dart';
@@ -294,6 +295,55 @@ class LocalTimelineRepository implements TimelineRepository {
       notebookSpace: row.notebook?.space,
       firstAssetRelPath: row.firstAsset?.relPath,
       firstAssetThumbPath: row.firstAsset?.thumbPath,
+      contentDelta: entry.contentDelta,
     );
+  }
+
+  @override
+  Future<TimelineEntry?> findEntryById(int id) async {
+    try {
+      final entry = await _dao.findById(id);
+      if (entry == null) return null;
+      return TimelineEntry(
+        id: entry.id,
+        uuid: entry.uuid,
+        title: entry.title,
+        plainText: entry.plainText,
+        type: EntryType.fromName(entry.type),
+        status: EntryStatus.fromName(entry.status),
+        pinned: entry.pinned,
+        entryDate: entry.entryDate,
+        updatedAt: entry.updatedAt,
+        mood: entry.mood,
+        notebookId: entry.notebookId,
+        contentDelta: entry.contentDelta,
+      );
+    } on Exception catch (error) {
+      throw DatabaseException('读取记录详情失败', cause: error);
+    }
+  }
+
+  @override
+  Future<List<EntryAsset>> findAssetsByEntry(int entryId) async {
+    final dao = assetsDao;
+    if (dao == null) return const <EntryAsset>[];
+    try {
+      final rows = await dao.byEntry(entryId);
+      return rows
+          .map(
+            (a) => EntryAsset(
+              id: a.id,
+              sortIndex: a.sortIndex,
+              relPath: a.relPath,
+              thumbPath: a.thumbPath,
+              mediumPath: a.mediumPath,
+              width: a.width,
+              height: a.height,
+            ),
+          )
+          .toList(growable: false);
+    } on Exception catch (error) {
+      throw DatabaseException('读取图片失败', cause: error);
+    }
   }
 }

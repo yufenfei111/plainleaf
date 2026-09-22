@@ -45,6 +45,7 @@ class TimelineEntry {
     this.notebookSpace,
     this.firstAssetRelPath,
     this.firstAssetThumbPath,
+    this.contentDelta,
   });
 
   final int id;
@@ -70,6 +71,9 @@ class TimelineEntry {
 
   /// 首图缩略图相对路径（W6 两级缩略图；为空时回退原图）
   final String? firstAssetThumbPath;
+
+  /// quill 正文 Delta JSON（W8 详情页渲染富文本；旧数据或纯文本为空串）
+  final String? contentDelta;
 }
 
 /// 新建/更新记录草稿（TimelineRepository.saveEntry / updateEntry 的入参）

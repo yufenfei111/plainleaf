@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../../shared/widgets/empty_state.dart';
 import '../../timeline/domain/entities/timeline_entry.dart';
 import '../../timeline/presentation/providers/timeline_providers.dart';
 
@@ -32,7 +34,17 @@ class TrashPage extends ConsumerWidget {
       body: trash.when(
         data: (list) {
           if (list.isEmpty) {
-            return const _EmptyView();
+            // 回收站空态（W8）：统一走共享 EmptyState，并明确告知 30 天保留策略
+            // ——这一点与普通空列表不同，用户最关心的正是「删的东西还在不在」。
+            return EmptyState(
+              icon: Icons.delete_sweep_outlined,
+              title: '回收站里还没有记录',
+              subtitle: '回收站中的记录会从删除之日起保留 30 天，到期自动清理。',
+              actionLabel: '返回',
+              onAction: () {
+                if (context.canPop()) context.pop();
+              },
+            );
           }
           return ListView.builder(
             padding: const EdgeInsets.only(top: 8, bottom: 96),
@@ -181,26 +193,6 @@ class _TrashTile extends ConsumerWidget {
               }
             },
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _EmptyView extends StatelessWidget {
-  const _EmptyView();
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.delete_sweep_outlined,
-              size: 56,
-              color: Theme.of(context).colorScheme.primary.withAlpha(120)),
-          const SizedBox(height: 12),
-          Text('回收站是空的', style: Theme.of(context).textTheme.titleMedium),
         ],
       ),
     );

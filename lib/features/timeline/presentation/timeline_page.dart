@@ -10,6 +10,7 @@ import '../domain/entities/timeline_entry.dart';
 import '../domain/entities/timeline_filter.dart';
 import '../domain/timeline_grouping.dart';
 import '../../../app/providers.dart';
+import '../../../shared/widgets/empty_state.dart';
 import '../../notebooks/presentation/providers/notebooks_providers.dart';
 import 'providers/timeline_providers.dart';
 
@@ -57,7 +58,8 @@ class TimelinePage extends ConsumerWidget {
           Expanded(
             child: timeline.when(
               data: (entries) => entries.isEmpty
-                  ? _EmptyView(filtered: !ref.watch(timelineFilterProvider).isEmpty)
+                  ? _buildEmptyState(
+                      context, ref, ref.watch(timelineFilterProvider).isEmpty)
                   : _TimelineList(entries: entries, root: root),
               loading: () => const _LoadingView(),
               error: (error, _) => _ErrorView(error: '$error'),
@@ -310,7 +312,7 @@ class _EntryCard extends ConsumerWidget {
     return Card(
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        onTap: () => context.push('/editor?id=${entry.id}'),
+        onTap: () => context.push('/detail?id=${entry.id}'),
         // 长按出操作菜单：置顶 / 删除（W7 置顶收藏）
         onLongPress: () => _showEntryMenu(context, ref, entry),
         child: Padding(
@@ -490,38 +492,36 @@ class _LoadingView extends StatelessWidget {
   }
 }
 
-class _EmptyView extends StatelessWidget {
-  const _EmptyView({this.filtered = false});
-
-  /// 是否处于"筛选后无结果"（与"一条记录都没有"给不同文案）
-  final bool filtered;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(filtered ? Icons.filter_alt_off_outlined : Icons.spa_outlined,
-              size: 56,
-              color: Theme.of(context).colorScheme.primary.withAlpha(120)),
-          const SizedBox(height: 12),
-          Text(
-            filtered ? '没有符合条件的记录' : '还没有记录',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            filtered ? '试试清除上方的筛选条件' : '点右下角「记一笔」，写下第一条',
-            style: Theme.of(context)
-                .textTheme
-                .bodyMedium
-                ?.copyWith(color: Theme.of(context).hintColor),
-          ),
-        ],
-      ),
+/// 时间轴空态（W8）：区分两种"空"——库里本就没有记录 vs 筛选后无结果。
+///
+/// 主代理后续会把这里替换成共享的 EmptyState 组件，故保持内联、简单，
+/// 但必须可直接用：库空给欢迎引导（主行动去写第一条），筛选空明确归因到筛选
+/// 并提供一键清除（直接重置 timelineFilterProvider，不依赖客户端过滤）。
+/// 空态（W8）：统一走共享组件 [EmptyState]，但**必须区分两种成因**——
+/// ① 库里原本就没有任何记录 → 欢迎式引导；② 有筛选条件但筛完为空 →
+/// 明确告知是筛选导致并给一键清除。两者混为一谈会让用户误以为数据丢了。
+Widget _buildEmptyState(BuildContext context, WidgetRef ref, bool noFilter) {
+  if (noFilter) {
+    // 真·空库：主行动是去写第一条记录
+    return EmptyState(
+      icon: Icons.spa_outlined,
+      title: '还没有记录',
+      subtitle: '点右下角「记一笔」，写下你的第一条',
+      actionLabel: '记一笔',
+      onAction: () => context.push('/editor'),
     );
   }
+
+  // 有筛选但筛空：清除筛选就是把这个 StateProvider 重置为默认值，
+  // watchTimeline 的流会带着新的 where 自动重查。
+  return EmptyState(
+    icon: Icons.filter_alt_off_outlined,
+    title: '没有符合条件的记录',
+    subtitle: '当前的筛选条件没有匹配到任何记录',
+    actionLabel: '清除筛选',
+    onAction: () => ref.read(timelineFilterProvider.notifier).state =
+        const TimelineFilter(),
+  );
 }
 
 class _ErrorView extends StatelessWidget {
