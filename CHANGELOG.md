@@ -134,6 +134,51 @@
 
 - 测试：test/w10_fixes_test.dart 5 例；全套 **81/81 passed**，`dart analyze --fatal-infos` 0 issue
 
+### Added（阶段 2 · W11：W10 收尾 + 体验与信息架构第一期，2026-09-23）
+
+5 个子代理并行改造 12 个文件、新增 7 个文件（+1274 / −149）。**未引入任何第三方依赖**，
+依赖选型比对与完整自查见 `docs/verification-w11.md`。
+
+**启动体验**
+- 首屏主题预读：`main()` 在 `runApp` 前读一次「主题模式/字号/强调色」并经 ProviderScope 注入
+  （`AppearanceSnapshot` / `initialAppearanceProvider`），消除「默认主题 → 恢复主题」的一次重绘；
+  字段全可空 + 默认空快照，所有只 override `dbProvider` 的既有测试行为不变
+- 共享骨架屏 `shared/widgets/skeleton.dart`（`SkeletonBox` / `TimelineSkeleton` / `GridSkeleton`）：
+  **刻意不做呼吸动画** —— 循环动画会让 `pumpAndSettle` 永远等不到静止
+
+**时间轴**
+- 分页续拉：首屏 40 条（`kTimelinePageSize`）+ 滚动续拉；用「取前 N 条」而非 offset，
+  因为队首随时会插入新记录，offset 第二页必然错位
+- 下拉刷新（`RefreshIndicator` + `AlwaysScrollableScrollPhysics`），刷新时 limit 复位
+- loading 态由转圈改为骨架屏；续拉时不退回整页骨架（按 `AsyncValue.hasValue` 分流）
+- 筛选交互重做：横向 chip 长条 → 「筛选」入口（带已选数量徽标）+ 底部弹层（笔记本/类型/仅看置顶
+  + 重置/查看结果）；弹层内改草稿、「查看结果」才提交，避免每点一个 chip 都重查一次流
+
+**学习 Tab**
+- 待办录入：顶部录入行（回车即添加，空/纯空格不落库并给轻提示）+ 未完成/已完成分组
+  （已完成默认折叠，但无未完成项时强制展开，否则看起来像数据丢了）
+- 左滑删除走**软删**（`deleted=1` + version+1），写库成功才真滑走，SnackBar 带「撤销」
+- `TodosDao` 新增 `addTodoWithContent` / `softDeleteTodo` / `restoreTodo`（手写 Drift DSL，无代码生成）
+
+**编辑器**
+- 底部字数统计（去空白、按 runes 计，`ValueNotifier` 局部刷新，不重建 QuillEditor）
+- 退出二次确认：`shouldConfirmExit = dirty && !empty && !bypass` —— 空记录不拦、已落库不拦、
+  点「完成」发布不拦（否则发布被自己的 PopScope 挡死）
+- 附件图长按看大图：medium 优先 + `cacheWidth` 限制（与原详情页同口径），不做缩放手势
+
+**相册**
+- 新增全屏浏览 `photo_viewer_page.dart`：PageView 翻页 + `InteractiveViewer` 缩放（1×–4×）、
+  三级渐进（thumb→medium→原图，每级都带 `cacheWidth`）、背景取 `colorScheme.scrim`、`Navigator.push(rootNavigator)` 自建 200ms 淡入
+  —— 取代 W10「点图跳详情」的过渡方案；长按菜单保留「查看所属记录」
+
+**工具**
+- 新增 `tool/inprocess_analyze.dart`：本机创建子进程管道被安全策略拦截（`ERROR_PIPE_BUSY 231`）
+  时，`dart analyze` / `flutter test` 均崩溃；该工具在同进程内跑 analyzer 做兜底。
+  **覆盖范围有限**：能抓编译/类型错误，抓不到 lint；环境恢复后请以 `flutter analyze` 为准
+
+- 测试：新增 test/w11_{timeline,startup,study,editor,gallery}_test.dart 共 22 例
+  ⚠️ **全部未经执行** —— 本机会话无法派生子进程；请在正常环境按 `docs/verification-w11.md` 第六节补跑
+
 ## [0.1.0] - unreleased
 
 - M1 目标（2026-10-11）：MVP 记录内核（编辑器/图片管线/搜索/备份），发布 v0.1.0-alpha tag

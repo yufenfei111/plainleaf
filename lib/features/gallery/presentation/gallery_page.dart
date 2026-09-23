@@ -8,7 +8,9 @@ import 'package:path/path.dart' as p;
 
 import '../../../app/providers.dart';
 import '../../../shared/widgets/empty_state.dart';
+import '../../../shared/widgets/skeleton.dart';
 import '../domain/entities/gallery_asset.dart';
+import 'photo_viewer_page.dart';
 import 'providers/gallery_providers.dart';
 
 /// 相册 Tab（W6：月分组网格 + 缩略图 + 分页）
@@ -51,6 +53,36 @@ class _GalleryPageState extends ConsumerState<GalleryPage> {
     super.dispose();
   }
 
+  /// 长按菜单：保留「看所属记录」这一条通路
+  ///
+  /// 为什么是菜单而不是长按直接跳：点图片想看的是图片本身（单击已交给全屏浏览），
+  /// 跳详情变成了低频需求；放在菜单里给个可见入口，既不需要做多选题，
+  /// 也避免「长按一下就被弹走」这种没有确认感的跳转。
+  Future<void> _showEntryMenu(BuildContext context, int? entryId) async {
+    if (entryId == null) return;
+    // 要在 await 之后导航，先把导航对象握在手里，别跨异步再用 context
+    final router = GoRouter.of(context);
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.article_outlined),
+              title: const Text('查看所属记录'),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                router.push('/detail?id=$entryId');
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final asyncAssets = ref.watch(galleryProvider);
@@ -68,7 +100,7 @@ class _GalleryPageState extends ConsumerState<GalleryPage> {
         ],
       ),
       body: asyncAssets.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const GridSkeleton(crossAxisCount: 3),
         error: (error, _) => _ErrorView(error: '$error'),
         data: (assets) {
           if (assets.isEmpty) {
@@ -107,12 +139,19 @@ class _GalleryPageState extends ConsumerState<GalleryPage> {
                         asset: g.items[i],
                         root: root,
                         size: _cellSize,
-                        onTap: () {
-                          final entryId = g.items[i].entryId;
-                          if (entryId == null) return;
-                          // 相册里的图此前点不动；点开所属记录详情才是用户预期
-                          context.push('/detail?id=$entryId');
-                        },
+                        // W11：点图 = 原地铺开看图；「进所属记录」退居长按菜单。
+                        // 之前点图直接跳详情是为了让格子「点得动」的过渡方案，
+                        // 但用户点一张照片想看的是这张照片，不是它背后的那篇记录。
+                        onTap: root == null
+                            ? null
+                            : () => PhotoViewerPage.open(
+                                  context,
+                                  assets: assets,
+                                  index: g.start + i,
+                                  supportDir: root,
+                                ),
+                        onLongPress: () =>
+                            _showEntryMenu(context, g.items[i].entryId),
                       ),
                       childCount: g.items.length,
                     ),
@@ -155,15 +194,19 @@ class _GalleryPageState extends ConsumerState<GalleryPage> {
 }
 
 /// 按"年月"分组（数据已按创建时间倒序，组内顺序天然正确）
+///
+/// [start] 记下本组首图在扁平列表里的下标：全屏浏览要按同一份顺序翻页，
+/// 缺了它就没法把「点的是第几张」还原成跨月连续的页码。
 List<_MonthGroup> _groupByMonth(List<GalleryAsset> assets) {
   final groups = <_MonthGroup>[];
   String? currentLabel;
-  for (final a in assets) {
+  for (var i = 0; i < assets.length; i++) {
+    final a = assets[i];
     final label = '${a.createdAt.year}年'
         '${a.createdAt.month.toString().padLeft(2, '0')}月';
     if (label != currentLabel) {
       currentLabel = label;
-      groups.add(_MonthGroup(label));
+      groups.add(_MonthGroup(label, start: i));
     }
     groups.last.items.add(a);
   }
@@ -171,8 +214,11 @@ List<_MonthGroup> _groupByMonth(List<GalleryAsset> assets) {
 }
 
 class _MonthGroup {
-  _MonthGroup(this.label);
+  _MonthGroup(this.label, {required this.start});
   final String label;
+
+  /// 本组首图在扁平列表中的下标
+  final int start;
   final List<GalleryAsset> items = [];
 }
 
@@ -202,12 +248,14 @@ class _GridTile extends StatelessWidget {
     required this.root,
     required this.size,
     required this.onTap,
+    required this.onLongPress,
   });
 
   final GalleryAsset asset;
   final String? root;
   final double size;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
+  final VoidCallback onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -218,11 +266,13 @@ class _GridTile extends StatelessWidget {
     );
     return ClipRRect(
       borderRadius: BorderRadius.circular(8),
-      child: root == null
-          ? placeholder
-          : GestureDetector(
-              onTap: onTap,
-              child: Image.file(
+      child: GestureDetector(
+        onTap: onTap,
+        onLongPress: onLongPress,
+        child: root == null
+            // 支持目录还没解析出来（只有启动时那几十毫秒）：先占位，别拼空基准路径
+            ? placeholder
+            : Image.file(
                 File(p.join(root!, rel)),
                 fit: BoxFit.cover,
                 cacheWidth: (size * dpr).round(),
@@ -231,7 +281,7 @@ class _GridTile extends StatelessWidget {
                   child: const Icon(Icons.broken_image_outlined),
                 ),
               ),
-            ),
+      ),
     );
   }
 }

@@ -15,14 +15,31 @@ final timelineRepositoryProvider = Provider<TimelineRepository>((ref) {
   );
 });
 
+/// 时间轴分页步长（W11）
+///
+/// 为什么从一次 100 条改成首屏 40 条：首帧要构建的是「月头 + 日头 + 卡片」三类行，
+/// 100 条记录意味着上百个 Widget 的首帧布局；40 条约两三屏，够用户滑起来再续拉，
+/// 首帧构建量直接减半（性能红线：时间轴滚动 60fps）。
+const int kTimelinePageSize = 40;
+
 /// 时间轴筛选条件（W7）：UI 改这个 → 流自动重查（SQL where 下推，非客户端过滤）
 final timelineFilterProvider =
     StateProvider<TimelineFilter>((ref) => const TimelineFilter());
 
-/// 时间轴数据流（AsyncValue 三层透传：loading / data / error 由页面 .when 消费）
+/// 当前查询条数（W11）：续拉就是 `state += kTimelinePageSize`，流带新 limit 重查一次。
+///
+/// 为什么用「取前 N 条」而不是 offset 分页：时间轴的排序是「置顶优先 + 日期倒序」，
+/// 用户随时会新写一条排在队首，offset 分页在第二页就会错位/重复；
+/// 而 limit 分页每次都是重新取前 N 条，插入新记录天然安全。
+final timelineLimitProvider = StateProvider<int>((ref) => kTimelinePageSize);
+
+/// 时间轴数据流（AsyncValue 三层透传：loading / data / error 由页面消费）
 final timelineStreamProvider = StreamProvider<List<TimelineEntry>>((ref) {
   final filter = ref.watch(timelineFilterProvider);
-  return ref.watch(timelineRepositoryProvider).watchTimeline(filter: filter);
+  final limit = ref.watch(timelineLimitProvider);
+  return ref
+      .watch(timelineRepositoryProvider)
+      .watchTimeline(filter: filter, limit: limit);
 });
 
 /// 草稿箱流（W3）

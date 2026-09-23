@@ -23,9 +23,18 @@ void main() async {
   // 却实打实地把启动时间按在启动路径上——冷启动每多一次事务就多一次 IO 等待。
   unawaited(_purgeExpiredTrash(db));
 
+  // 外观三件套预读（W10 收尾）：三次 settings_kv 查询，放在 runApp 之前一次性
+  // await 完。代价只有这三次主键等值查询（库已打开、无额外 IO），换掉的是首帧
+  // 「默认主题 → 恢复主题」的那一次重绘闪屏。失败一律降级为空快照，绝不让读
+  // 配置失败变成启动失败。
+  final appearance = await readAppearanceSnapshot(db);
+
   runApp(
     ProviderScope(
-      overrides: [dbProvider.overrideWithValue(db)],
+      overrides: [
+        dbProvider.overrideWithValue(db),
+        initialAppearanceProvider.overrideWithValue(appearance),
+      ],
       child: const PlainLeafApp(),
     ),
   );

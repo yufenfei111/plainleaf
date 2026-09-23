@@ -30,6 +30,12 @@ import '../../timeline/presentation/providers/timeline_providers.dart';
 ///    现先把输入标记为待存，id 就绪后立刻冲刷。
 /// ③ dispose 只取消防抖不执行、发布时内容与状态两个事务并发；
 ///    现 dispose 先冲刷，发布 await 内容落库后再置 status。
+///
+/// W11 打磨（轻量、克制，不堆视觉装饰）：
+/// ① 底部字数统计：正文去空白字符数，走 ValueNotifier 局部刷新——
+///    不用 setState，否则每敲一个字都要重建整棵 QuillEditor；
+/// ② 退出二次确认：仅「有内容且未落库」时拦一次；
+/// ③ 附件图长按看大图：medium 优先 + 按屏幕宽×DPR 限制 cacheWidth，不做缩放手势。
 class EditorPage extends ConsumerStatefulWidget {
   const EditorPage({super.key, this.entryId});
 
@@ -38,6 +44,42 @@ class EditorPage extends ConsumerStatefulWidget {
   @override
   ConsumerState<EditorPage> createState() => _EditorPageState();
 }
+
+/// 正文字数：去空白后按「字符」计（中英文同权）。
+///
+/// 抽成纯函数是为了可单测——Widget 用例里数 quill 的字符既慢又脆；
+/// 空白（含 quill 每行末尾的换行）不计入，否则「敲 10 个回车」也算 10 字。
+/// 用 runes 而不是 String.length：后者按 UTF-16 码元计，一个非 BMP 字符会算成 2。
+int countBodyChars(String plainText) {
+  if (plainText.isEmpty) return 0;
+  return plainText.replaceAll(_bodyWhitespace, '').runes.length;
+}
+
+final RegExp _bodyWhitespace = RegExp(r'\s+');
+
+/// 全屏大图的解码宽度上限：屏幕宽 × 设备像素比。
+///
+/// 手机原图动辄 4000px 数 MB，全屏解码不加限制会直接顶出内存尖峰；
+/// 夹在 [1, 4096] 是为了挡住「测量值为 0」与「超高 DPR」两种极端输入。
+int fullscreenCacheWidth(double screenWidth, double devicePixelRatio) =>
+    (screenWidth * devicePixelRatio).round().clamp(1, 4096).toInt();
+
+/// 全屏大图首选来源：medium（长边 1600）优先，缺失时回退原图。
+/// 与详情页同一口径，避免两处对「该解码哪张」给出不同答案。
+String viewerRelPath(String relPath, String? mediumPath) =>
+    mediumPath ?? relPath;
+
+/// 是否拦截退出：**有内容** 且 **有未落库的改动** 且 **不是程序主动退出**。
+///
+/// 三条缺一不可：空记录退出时会被回收（不该拿对话框拦一下）；
+/// 已落库的内容再拦就是打扰；点「完成」发布、或用户已在对话框里确认过，
+/// 都属于程序主动退出，必须直接放行——否则发布流程会被自己挡死。
+bool shouldConfirmExit({
+  required bool dirty,
+  required bool empty,
+  required bool bypass,
+}) =>
+    dirty && !empty && !bypass;
 
 class _EditorPageState extends ConsumerState<EditorPage> {
   QuillController? _controller;
@@ -64,6 +106,18 @@ class _EditorPageState extends ConsumerState<EditorPage> {
 
   /// id 尚未就绪时用户已经敲了字（新建首帧竞态），拿到 id 后补一次保存
   bool _pendingPersist = false;
+
+  /// 正文字数（去空白）：交给字数条自己监听，
+  /// 这样每敲一个字只重建那一行小字，不必重建整棵 QuillEditor
+  final ValueNotifier<int> _bodyChars = ValueNotifier<int>(0);
+
+  /// 正文变更订阅：quill 的 Document.changes 只在文档真被改动时发事件，
+  /// 不像 controller.addListener 那样连移动光标也会触发（会导致无意义的写库）
+  StreamSubscription<DocChange>? _docSub;
+
+  /// 程序主动退出（点「完成」发布、或用户已在确认框里选了退出）：
+  /// 下一次 pop 必须直接放行，否则发布流程会被自己的 PopScope 挡死
+  bool _bypassExitConfirm = false;
 
   @override
   void initState() {
@@ -107,6 +161,10 @@ class _EditorPageState extends ConsumerState<EditorPage> {
       ));
     }
     if (!mounted) return;
+    // 绑定正文变更 + 首帧字数都放在 setState 之前：
+    // 首帧就带上正确字数，省掉一次「0 字 → N 字」的跳变
+    _bindDocumentChanges();
+    _refreshBodyChars();
     setState(() => _loading = false);
     // 竞态兜底：草稿 id 返回前用户已经输入过，这里补一次保存，不能丢字。
     if (_pendingPersist) {
@@ -125,6 +183,7 @@ class _EditorPageState extends ConsumerState<EditorPage> {
             assetId: a.id,
             relPath: a.relPath,
             thumbPath: a.thumbPath,
+            mediumPath: a.mediumPath,
           ),
       ];
     });
@@ -204,7 +263,22 @@ class _EditorPageState extends ConsumerState<EditorPage> {
   /// 分类属性指纹：与上次落库的值一致时跳过写库，避免每次防抖都多一个事务
   String _metaSignature() => '${_type.name}|${_notebookId ?? ''}|${_mood ?? ''}';
 
+  /// 订阅正文变更（字数 + 防抖保存）；重复调用时先退订旧的
+  void _bindDocumentChanges() {
+    _docSub?.cancel();
+    final controller = _controller;
+    if (controller == null) return;
+    _docSub = controller.document.changes.listen((_) => _onContentChanged());
+  }
+
+  void _refreshBodyChars() {
+    final controller = _controller;
+    if (controller == null) return;
+    _bodyChars.value = countBodyChars(controller.document.toPlainText());
+  }
+
   void _onContentChanged() {
+    _refreshBodyChars();
     if (!_dirty && mounted) setState(() => _dirty = true);
     if (_id == null) {
       // 新建：落草稿还在路上，先把「有待存内容」记下来，id 一到就冲刷。
@@ -268,7 +342,42 @@ class _EditorPageState extends ConsumerState<EditorPage> {
       await _repo.setStatus(_id!, status: 'normal');
       _status = 'normal';
     }
+    // 发布是显式退出：置位后再 pop，避免被「未保存」确认框拦住
+    _bypassExitConfirm = true;
     if (mounted) context.pop();
+  }
+
+  /// 被拦截的退出：给一次确认。
+  ///
+  /// 收尾只用对话框自己的 context（W10 坑：用页面级 context 会把整页弹掉）；
+  /// 确认退出后先 setState 置位再 pop——PopScope.canPop 是在 didUpdateWidget 里
+  /// 同步给 canPopNotifier 的，不重建就还是旧值，pop 会被再拦一次。
+  Future<void> _handleExitConfirm() async {
+    final navigator = Navigator.of(context);
+    final leave = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: const Text('保留草稿并退出？'),
+        content: const Text('还有改动没写完。退出后内容会留在草稿箱里，随时可以接着写。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(false),
+            child: const Text('继续编辑'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(true),
+            child: const Text('保留草稿并退出'),
+          ),
+        ],
+      ),
+    );
+    if (leave != true || !mounted) return;
+    setState(() => _bypassExitConfirm = true);
+    // 等下一帧（此时 PopScope 已用新的 canPop 重建）再真正 pop；
+    // pop 成功后 onPopInvokedWithResult 的 didPop 分支会冲刷保存
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) navigator.pop();
+    });
   }
 
   Future<void> _onExit() async {
@@ -285,6 +394,8 @@ class _EditorPageState extends ConsumerState<EditorPage> {
     _debouncer.flush(_persist);
     _closed = true;
     _debouncer.dispose();
+    _docSub?.cancel();
+    _bodyChars.dispose();
     _titleCtrl.dispose();
     _controller?.dispose();
     super.dispose();
@@ -300,11 +411,20 @@ class _EditorPageState extends ConsumerState<EditorPage> {
     final root = ref.watch(supportDirProvider).valueOrNull;
 
     return PopScope(
+      // 只在「有内容且未落库」时拦；空记录与已保存的情况一律直接放行
+      canPop: !shouldConfirmExit(
+        dirty: _dirty,
+        empty: _isEmpty,
+        bypass: _bypassExitConfirm,
+      ),
       onPopInvokedWithResult: (didPop, _) async {
         if (didPop) {
           // 返回时冲刷保存；空记录直接进回收站（数据红线：不留垃圾行）
           await _onExit();
+          return;
         }
+        // 没 pop 成 = 被上面拦住了：给一次确认
+        await _handleExitConfirm();
       },
       child: Scaffold(
         appBar: AppBar(
@@ -398,7 +518,44 @@ class _EditorPageState extends ConsumerState<EditorPage> {
                 ),
               ),
             ),
+            // 字数放在正文区底部：AppBar 已经放了保存态与「完成」，再挤会打架
+            _CharCountBar(count: _bodyChars),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 底部字数条：只监听 [count]，整页不重建。
+///
+/// 用 AnimatedSwitcher 做 200ms 淡入淡出（不做数字滚动动画——那属于「看着热闹、
+/// 读起来更慢」的装饰）。字数属于参考信息，故用 onSurfaceVariant 的低强调色。
+class _CharCountBar extends StatelessWidget {
+  const _CharCountBar({required this.count});
+
+  final ValueNotifier<int> count;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+      child: ValueListenableBuilder<int>(
+        valueListenable: count,
+        builder: (context, value, _) => Align(
+          alignment: Alignment.centerLeft,
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 200),
+            child: Text(
+              '$value 字',
+              key: ValueKey<int>(value),
+              style: Theme.of(context)
+                  .textTheme
+                  .labelSmall
+                  ?.copyWith(color: cs.onSurfaceVariant),
+            ),
+          ),
         ),
       ),
     );
@@ -563,6 +720,7 @@ class _AttachedImage {
     required this.assetId,
     required this.relPath,
     this.thumbPath,
+    this.mediumPath,
   });
 
   final int assetId;
@@ -572,6 +730,9 @@ class _AttachedImage {
 
   /// 缩略图相对路径（长边 400）；为空说明还没转码，回退原图但限制解码尺寸
   final String? thumbPath;
+
+  /// 中号图相对路径（长边 1600）；全屏查看的首选来源
+  final String? mediumPath;
 }
 
 /// 图片附件条（W4 附件条模式，issue #7；quill 内嵌混排按深坑预案延后，W6 统一缩略图管线）
@@ -673,17 +834,72 @@ class _ImageTile extends StatelessWidget {
       return const SizedBox(width: size, height: size);
     }
     final dpr = MediaQuery.devicePixelRatioOf(context);
-    return Image.file(
-      File(p.join(base, image.thumbPath ?? image.relPath)),
-      width: size,
-      height: size,
-      fit: BoxFit.cover,
-      cacheWidth: (size * dpr).round(),
-      errorBuilder: (context, error, stackTrace) => const SizedBox(
+    return GestureDetector(
+      // 长按看大图：格子只有 72dp，截图/文档类图片在这里根本看不清内容。
+      // 不做缩放手势——全屏浏览由相册那边负责，这里只解决「看不清」。
+      onLongPress: () => _openFullscreen(context, image, base),
+      child: Image.file(
+        File(p.join(base, image.thumbPath ?? image.relPath)),
         width: size,
         height: size,
-        child: Icon(Icons.broken_image_outlined),
+        fit: BoxFit.cover,
+        cacheWidth: (size * dpr).round(),
+        errorBuilder: (context, error, stackTrace) => const SizedBox(
+          width: size,
+          height: size,
+          child: Icon(Icons.broken_image_outlined),
+        ),
       ),
     );
   }
+}
+
+/// 全屏看大图：medium 优先 + 按屏幕宽×DPR 限制 cacheWidth（与详情页同一口径）。
+///
+/// 没有 InteractiveViewer：这里只做「看大图」，点任意处或右上角关闭；
+/// 收尾统一用对话框自己的 context（页面级 context.pop() 会把整页弹掉）。
+void _openFullscreen(
+  BuildContext context,
+  _AttachedImage image,
+  String root,
+) {
+  final cacheWidth = fullscreenCacheWidth(
+    MediaQuery.sizeOf(context).width,
+    MediaQuery.devicePixelRatioOf(context),
+  );
+  final cs = Theme.of(context).colorScheme;
+  showDialog<void>(
+    context: context,
+    builder: (dialogCtx) => Dialog.fullscreen(
+      child: GestureDetector(
+        onTap: () => Navigator.of(dialogCtx).pop(),
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: Image.file(
+                File(p.join(root, viewerRelPath(image.relPath, image.mediumPath))),
+                cacheWidth: cacheWidth,
+                fit: BoxFit.contain,
+                errorBuilder: (_, _, _) => Center(
+                  child: Icon(
+                    Icons.broken_image_outlined,
+                    color: cs.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 8,
+              right: 8,
+              child: IconButton(
+                tooltip: '关闭',
+                icon: const Icon(Icons.close),
+                onPressed: () => Navigator.of(dialogCtx).pop(),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 }

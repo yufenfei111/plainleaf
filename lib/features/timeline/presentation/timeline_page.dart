@@ -11,6 +11,7 @@ import '../domain/entities/timeline_filter.dart';
 import '../domain/timeline_grouping.dart';
 import '../../../app/providers.dart';
 import '../../../shared/widgets/empty_state.dart';
+import '../../../shared/widgets/skeleton.dart';
 import '../../detail/presentation/entry_detail_page.dart' show entryThumbHeroTag;
 import '../../notebooks/presentation/providers/notebooks_providers.dart';
 import 'providers/timeline_providers.dart';
@@ -59,14 +60,7 @@ class TimelinePage extends ConsumerWidget {
         children: [
           const _FilterBar(),
           Expanded(
-            child: timeline.when(
-              data: (entries) => entries.isEmpty
-                  ? _buildEmptyState(
-                      context, ref, ref.watch(timelineFilterProvider).isEmpty)
-                  : _TimelineList(entries: entries, root: root),
-              loading: () => const _LoadingView(),
-              error: (error, _) => _ErrorView(error: '$error'),
-            ),
+            child: _TimelineBody(state: timeline, root: root),
           ),
         ],
       ),
@@ -74,9 +68,48 @@ class TimelinePage extends ConsumerWidget {
   }
 }
 
-/// 筛选条（W7）：笔记本 / 类型 / 仅看置顶
+/// 列表区三态分发（W11）
 ///
-/// 只改 `timelineFilterProvider` 一个状态，流会自动带着新的 where 重查——
+/// 为什么不用 `AsyncValue.when`：续拉时 Riverpod 会把状态置成
+/// `AsyncLoading(hasValue: true)`（保留了上一页数据），而 `when` 在 isLoading 时
+/// 走的是 loading 分支——那会把已经渲染出来的列表推翻回骨架屏，
+/// 用户滑到第 N 条的位置也一起丢了。所以这里按「有没有值」先分流。
+class _TimelineBody extends ConsumerWidget {
+  const _TimelineBody({required this.state, this.root});
+
+  final AsyncValue<List<TimelineEntry>> state;
+
+  /// App 支持目录（相对路径的解析基准）
+  final String? root;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final entries = state.valueOrNull;
+    if (entries == null) {
+      if (state.hasError) {
+        return _ErrorView(error: '${state.error}');
+      }
+      return const TimelineSkeleton();
+    }
+    if (entries.isEmpty) {
+      return _buildEmptyState(
+          context, ref, ref.watch(timelineFilterProvider).isEmpty);
+    }
+    return _TimelineList(
+      entries: entries,
+      root: root,
+      loading: state.isLoading,
+    );
+  }
+}
+
+/// 筛选入口（W11 重做）
+///
+/// 为什么从「横向无限滚动的 chip 条」改成「一个入口 + 底部弹层」：
+/// 笔记本只会越建越多，横向条里同时可见的永远只有两三个，用户得靠横向摸索
+/// 才知道自己有哪些可选条件；入口 + 弹层把可选项纵向一次性摊开，且能滚动。
+///
+/// 依然只改 `timelineFilterProvider` 一个状态，流会自动带着新的 where 重查——
 /// UI 不做任何客户端过滤，避免"先 LIMIT 再筛"导致的假空列表。
 class _FilterBar extends ConsumerWidget {
   const _FilterBar();
@@ -84,59 +117,235 @@ class _FilterBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final filter = ref.watch(timelineFilterProvider);
-    final notebooks = ref.watch(notebooksStreamProvider);
-    final cs = Theme.of(context).colorScheme;
-
-    return SizedBox(
-      height: 52,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+      child: Row(
         children: [
-          FilterChip(
-            label: const Text('仅看置顶'),
-            avatar: const Icon(Icons.push_pin, size: 16),
-            selected: filter.pinnedOnly,
-            onSelected: (v) => ref
-                .read(timelineFilterProvider.notifier)
-                .update((s) => s.copyWith(pinnedOnly: v)),
+          _FilterEntryButton(
+            count: filter.activeCount,
+            onTap: () => _openFilterSheet(context),
           ),
-          const SizedBox(width: 8),
-          for (final t in EntryType.values) ...[
-            FilterChip(
-              label: Text(t.label),
-              selected: filter.type == t,
-              onSelected: (v) => ref
-                  .read(timelineFilterProvider.notifier)
-                  .update((s) => s.copyWith(type: t, clearType: !v)),
-            ),
-            const SizedBox(width: 8),
-          ],
-          ...notebooks.when(
-            data: (list) => [
-              for (final n in list) ...[
-                FilterChip(
-                  label: Text(n.name),
-                  selected: filter.notebookId == n.id,
-                  onSelected: (v) => ref
-                      .read(timelineFilterProvider.notifier)
-                      .update((s) => s.copyWith(notebookId: n.id, clearNotebook: !v)),
-                ),
-                const SizedBox(width: 8),
-              ],
-            ],
-            loading: () => const <Widget>[SizedBox.shrink()],
-            error: (_, _) => const <Widget>[SizedBox.shrink()],
-          ),
+          const Spacer(),
           if (!filter.isEmpty)
-            ActionChip(
-              label: Text('清除 ${filter.activeCount}'),
-              backgroundColor: cs.errorContainer,
+            TextButton(
               onPressed: () => ref
                   .read(timelineFilterProvider.notifier)
                   .update((_) => const TimelineFilter()),
+              child: const Text('清除'),
             ),
         ],
+      ),
+    );
+  }
+}
+
+/// 「筛选」入口按钮：有已选条件时右侧带一个数量小圆标
+class _FilterEntryButton extends StatelessWidget {
+  const _FilterEntryButton({required this.count, required this.onTap});
+
+  /// 已激活的筛选条件个数；0 表示无筛选
+  final int count;
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final active = count > 0;
+    return InkWell(
+      borderRadius: BorderRadius.circular(22),
+      onTap: onTap,
+      child: Container(
+        // 触控目标红线 ≥44dp
+        height: 44,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        decoration: BoxDecoration(
+          color: active ? cs.primaryContainer : cs.surface,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: active ? cs.primary : cs.outlineVariant),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.filter_list_outlined,
+              size: 18,
+              color: active ? cs.onPrimaryContainer : cs.onSurfaceVariant,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              '筛选',
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                    color: active ? cs.onPrimaryContainer : cs.onSurface,
+                  ),
+            ),
+            if (active) ...[
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                decoration: BoxDecoration(
+                  color: cs.primary,
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: Text(
+                  '$count',
+                  style: Theme.of(context)
+                      .textTheme
+                      .labelSmall
+                      ?.copyWith(color: cs.onPrimary),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+Future<void> _openFilterSheet(BuildContext context) {
+  return showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    builder: (_) => const _FilterSheet(),
+  );
+}
+
+/// 筛选弹层（W11）：笔记本 / 类型 / 仅看置顶三段 + 重置 / 查看结果。
+///
+/// 弹层内改的是**草稿**，点「查看结果」才写回 provider——
+/// 否则每点一下 chip 就带着新 where 重查一次流，弹层里连续点几下会连着重查，
+/// 既浪费 IO 也让列表在底下不停跳。
+class _FilterSheet extends ConsumerStatefulWidget {
+  const _FilterSheet();
+
+  @override
+  ConsumerState<_FilterSheet> createState() => _FilterSheetState();
+}
+
+class _FilterSheetState extends ConsumerState<_FilterSheet> {
+  late TimelineFilter draft;
+
+  @override
+  void initState() {
+    super.initState();
+    draft = ref.read(timelineFilterProvider);
+  }
+
+  void _update(TimelineFilter next) => setState(() => draft = next);
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    final notebooks = ref.watch(notebooksStreamProvider);
+
+    return SafeArea(
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+              child: Text('筛选', style: tt.titleMedium),
+            ),
+            // ── 笔记本 ──────────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              child: Text(
+                '笔记本',
+                style: tt.labelLarge?.copyWith(color: cs.onSurfaceVariant),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.book_outlined),
+              title: const Text('全部笔记本'),
+              trailing: draft.notebookId == null
+                  ? Icon(Icons.check, color: cs.primary)
+                  : null,
+              onTap: () => _update(draft.copyWith(clearNotebook: true)),
+            ),
+            ...notebooks.when(
+              data: (list) => [
+                for (final n in list)
+                  ListTile(
+                    title: Text(n.name),
+                    trailing: draft.notebookId == n.id
+                        ? Icon(Icons.check, color: cs.primary)
+                        : null,
+                    onTap: () => _update(draft.copyWith(notebookId: n.id)),
+                  ),
+              ],
+              loading: () => const <Widget>[],
+              error: (_, _) => const <Widget>[],
+            ),
+            const Divider(height: 1),
+            // ── 类型 ────────────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              child: Text(
+                '类型',
+                style: tt.labelLarge?.copyWith(color: cs.onSurfaceVariant),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+              child: Wrap(
+                spacing: 8,
+                children: [
+                  for (final t in EntryType.values)
+                    FilterChip(
+                      label: Text(t.label),
+                      selected: draft.type == t,
+                      // 再点一次同一个 chip = 取消该条件
+                      onSelected: (v) => _update(
+                        draft.copyWith(type: t, clearType: !v),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            // ── 仅看置顶 ────────────────────────────────────────────
+            ListTile(
+              leading: const Icon(Icons.push_pin_outlined),
+              title: const Text('仅看置顶'),
+              trailing: Switch(
+                value: draft.pinnedOnly,
+                onChanged: (v) => _update(draft.copyWith(pinnedOnly: v)),
+              ),
+              onTap: () => _update(draft.copyWith(pinnedOnly: !draft.pinnedOnly)),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => _update(const TimelineFilter()),
+                      child: const Text('重置筛选'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () {
+                        ref.read(timelineFilterProvider.notifier).state = draft;
+                        // 换了筛选条件就回到首屏条数：否则会带着续拉出来的大 limit
+                        // 在新条件上重查一次，白拉几十条
+                        ref.read(timelineLimitProvider.notifier).state =
+                            kTimelinePageSize;
+                        Navigator.pop(context);
+                      },
+                      child: const Text('查看结果'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -187,30 +396,112 @@ List<_Row> _flatten(List<EntryMonthGroup> groups) {
   return rows;
 }
 
-class _TimelineList extends StatelessWidget {
-  const _TimelineList({required this.entries, this.root});
+/// 续拉触发距离：距列表底部不足 400px 就开始取下一页
+const double _kLoadMoreThreshold = 400;
+
+/// 列表（W11）：下拉刷新 + 滚动续拉 + 底部一行轻量提示
+class _TimelineList extends ConsumerWidget {
+  const _TimelineList({
+    required this.entries,
+    this.root,
+    required this.loading,
+  });
 
   final List<TimelineEntry> entries;
 
   /// App 支持目录（相对路径的解析基准）；为 null 表示尚未取到
   final String? root;
 
+  /// 是否正在加载（首屏流还没到 / 正在续拉）
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final limit = ref.watch(timelineLimitProvider);
+    // 「还有更多」判定：本次结果长度 >= 当前 limit 即视为可能还有。
+    // 不为此多查一次 count——分页本身就是为了省查询，多花一次 IO 就本末倒置了。
+    final hasMore = entries.length >= limit;
+    final rows = _flatten(groupByMonth(entries));
+
+    return RefreshIndicator(
+      onRefresh: () => _onRefresh(ref),
+      child: NotificationListener<ScrollNotification>(
+        // 返回 false：让通知继续向上冒泡，RefreshIndicator 才收得到滑动手势
+        onNotification: (notification) {
+          if (notification.metrics.extentAfter < _kLoadMoreThreshold) {
+            _loadMore(ref);
+          }
+          return false;
+        },
+        child: ListView.builder(
+          // 数据不足一屏时也要能拉出刷新指示器
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.only(top: 4, bottom: 96),
+          // 预渲染视口外的缓冲：滑动时提前备好下一屏，减少"边滑边建"的抖动
+          scrollCacheExtent: const ScrollCacheExtent.viewport(1.0),
+          itemCount: rows.length + 1,
+          itemBuilder: (context, i) {
+            if (i == rows.length) {
+              return _ListFooter(
+                // 续拉期间 hasMore 会因为 limit 已上调而短暂为 false，
+                // 所以「正在加载」要单独看 loading，别在这一瞬间闪出「已经到底了」
+                text: loading || hasMore ? '正在加载…' : '已经到底了',
+              );
+            }
+            final row = rows[i];
+            return switch (row) {
+              _MonthRow() => _MonthHeader(row: row),
+              _DayRow() => _DayHeader(row: row),
+              _EntryRow() => _EntryCard(row.entry, root: root),
+            };
+          },
+        ),
+      ),
+    );
+  }
+
+  /// 续拉一页：把 limit 加一页，流自动带着新 limit 重查
+  void _loadMore(WidgetRef ref) {
+    final state = ref.read(timelineStreamProvider);
+    // 上一页还没回来就不再叠加，否则一次滑动会把 limit 连加好几页
+    if (state.isLoading) return;
+    final limit = ref.read(timelineLimitProvider);
+    final current = state.valueOrNull;
+    if (current == null || current.length < limit) return;
+    ref.read(timelineLimitProvider.notifier).state = limit + kTimelinePageSize;
+  }
+
+  /// 下拉刷新：先复位条数再 invalidate，否则刷新后仍按续拉后的大 limit 重查
+  Future<void> _onRefresh(WidgetRef ref) async {
+    ref.read(timelineLimitProvider.notifier).state = kTimelinePageSize;
+    ref.invalidate(timelineStreamProvider);
+    try {
+      // 等第一帧到达再收起指示器：立刻返回会让刷新动画一闪而过，看着像没刷新
+      await ref.read(timelineStreamProvider.future);
+    } on Object {
+      // 刷新失败时不拦着指示器收起，错误交给页面错误态呈现
+    }
+  }
+}
+
+/// 列表底部提示：一行小字，不转圈
+class _ListFooter extends StatelessWidget {
+  const _ListFooter({required this.text});
+
+  final String text;
+
   @override
   Widget build(BuildContext context) {
-    final rows = _flatten(groupByMonth(entries));
-    return ListView.builder(
-      padding: const EdgeInsets.only(top: 4, bottom: 96),
-      // 预渲染视口外的缓冲：滑动时提前备好下一屏，减少"边滑边建"的抖动
-      scrollCacheExtent: const ScrollCacheExtent.viewport(1.0),
-      itemCount: rows.length,
-      itemBuilder: (context, i) {
-        final row = rows[i];
-        return switch (row) {
-          _MonthRow() => _MonthHeader(row: row),
-          _DayRow() => _DayHeader(row: row),
-          _EntryRow() => _EntryCard(row.entry, root: root),
-        };
-      },
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      child: Center(
+        child: Text(
+          text,
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+        ),
+      ),
     );
   }
 }
@@ -496,15 +787,6 @@ class _Chip extends StatelessWidget {
             ?.copyWith(color: Theme.of(context).colorScheme.primary),
       ),
     );
-  }
-}
-
-class _LoadingView extends StatelessWidget {
-  const _LoadingView();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Center(child: CircularProgressIndicator());
   }
 }
 
