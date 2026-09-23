@@ -56,3 +56,6 @@ app.*.map.json
 # 系统/编辑器杂项
 Thumbs.db
 *.bak
+
+# Flutter 工具崩溃日志：tool 异常时直接写在工作目录根，形如 flutter_01.log
+flutter_*.log
