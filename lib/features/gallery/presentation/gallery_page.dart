@@ -269,7 +269,13 @@ class _GridTile extends StatelessWidget {
       child: GestureDetector(
         onTap: onTap,
         onLongPress: onLongPress,
-        child: root == null
+        // 碎图占位必须是「可点的」：图片加载失败时 Image 自身会塌成 0×0，
+        // deferToChild 的默认行为会让整格丢失命中，用户点了没反应。
+        behavior: HitTestBehavior.opaque,
+        child: SizedBox(
+          width: size,
+          height: size,
+          child: root == null
             // 支持目录还没解析出来（只有启动时那几十毫秒）：先占位，别拼空基准路径
             ? placeholder
             : Image.file(
@@ -281,6 +287,7 @@ class _GridTile extends StatelessWidget {
                   child: const Icon(Icons.broken_image_outlined),
                 ),
               ),
+        ),
       ),
     );
   }

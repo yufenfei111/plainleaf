@@ -59,3 +59,9 @@ Thumbs.db
 
 # Flutter 工具崩溃日志：tool 异常时直接写在工作目录根，形如 flutter_01.log
 flutter_*.log
+
+# 本机受限环境下的验证脚本及其输出（用计划任务脱离沙箱跑 flutter test）
+run_all.bat
+run_test.bat
+test_all.txt
+test_out.txt

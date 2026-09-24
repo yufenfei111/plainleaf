@@ -111,6 +111,9 @@ void main() {
 
     // 点第 2 张：验证初始下标来自「这张图在扁平列表里的位置」
     await tester.tap(find.byType(Image).at(1));
+    // 一次 pump(300) 不够：push 是在 tap 的下一帧才 install，
+    // 再叠 200ms 淡入，必须多推一帧才能拿到已挂载的看图页。
+    await tester.pump(const Duration(milliseconds: 100));
     await tester.pump(const Duration(milliseconds: 300));
 
     expect(find.byType(PhotoViewerPage), findsOneWidget,

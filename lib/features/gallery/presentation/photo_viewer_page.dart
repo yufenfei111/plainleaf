@@ -32,13 +32,16 @@ int viewerCacheWidth(BuildContext context) {
 /// 相邻重复会被折叠：早期数据 thumb/medium 未回填时可能指回同一个相对路径，
 /// 不折叠会白解码两次同一张图。
 List<String> viewerImageStages(GalleryAsset asset) {
-  final candidates = <String>[
-    if (asset.thumbPath case final thumb?) thumb,
-    if (asset.mediumPath case final medium?) medium,
+  // thumb/medium 可能没回填：先按「可能有 null」收成一列再逐个跳空，
+  // 比 if-case 判空的写法更容易被 analyzer 接受（不触发 use_null_aware_elements）。
+  final candidates = <String?>[
+    asset.thumbPath,
+    asset.mediumPath,
     asset.relPath,
   ];
   final stages = <String>[];
   for (final rel in candidates) {
+    if (rel == null) continue;
     if (stages.isEmpty || stages.last != rel) stages.add(rel);
   }
   return stages;

@@ -86,7 +86,10 @@ class _EditorPageState extends ConsumerState<EditorPage> {
   final _titleCtrl = TextEditingController();
   final _debouncer = Debouncer();
 
-  late final TimelineRepository _repo = ref.read(timelineRepositoryProvider);
+  // 不要写成 late final + 惰性取值：dispose() 里会冲刷最后一次保存，
+  // 那时 ref 已失效，惰性初始化会走到 ref.read 抛 StateError
+  // （「Cannot use ref after the widget was disposed」）。放在 initState 里提前取到手。
+  late TimelineRepository _repo;
 
   final _picker = ImagePicker();
   List<_AttachedImage> _images = const [];
@@ -122,6 +125,7 @@ class _EditorPageState extends ConsumerState<EditorPage> {
   @override
   void initState() {
     super.initState();
+    _repo = ref.read(timelineRepositoryProvider);
     _bootstrap();
   }
 
