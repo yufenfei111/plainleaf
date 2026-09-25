@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -15,6 +16,7 @@ import '../../../shared/widgets/skeleton.dart';
 import '../../detail/presentation/entry_detail_page.dart' show entryThumbHeroTag;
 import '../../notebooks/presentation/providers/notebooks_providers.dart';
 import 'providers/timeline_providers.dart';
+import 'widgets/on_this_day_card.dart';
 
 /// 时间轴首页（W7：月分组 + 筛选器 + 置顶收藏）
 ///
@@ -32,6 +34,13 @@ class TimelinePage extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('素页'),
         actions: [
+          IconButton(
+            // W12：日历回顾入口。放在时间轴而不是新开 Tab ——
+            // 「按天回看」是时间轴的另一种视图，不是并列的一级目的地。
+            icon: const Icon(Icons.calendar_month_outlined),
+            tooltip: '日历回顾',
+            onPressed: () => context.push('/calendar'),
+          ),
           IconButton(
             icon: const Icon(Icons.search),
             tooltip: '搜索',
@@ -52,6 +61,9 @@ class TimelinePage extends ConsumerWidget {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
+        // 与 home_page「我的」Tab 的 FAB 区分开（见那边的注释）：
+        // 同一条 PageRoute 子树里不允许两个 Hero 共用 tag。
+        heroTag: 'timeline-compose',
         onPressed: () => context.push('/editor'),
         icon: const Icon(Icons.add),
         label: const Text('记一笔'),
@@ -59,6 +71,11 @@ class TimelinePage extends ConsumerWidget {
       body: Column(
         children: [
           const _FilterBar(),
+          // 那年今日（W12）：无数据时自身塌成 0 尺寸，不留白占位。
+          // 挂在列表之外而没插进列表首项：列表那层有稳定 key + 入场动画的
+          // 集合差集判断，插一项会牵动它的下标与「谁是新插入」的判定，
+          // 收益（随滚隐藏）抵不上风险。
+          const OnThisDayCard(),
           Expanded(
             child: _TimelineBody(state: timeline, root: root),
           ),
@@ -362,10 +379,18 @@ const _moodColors = <int, Color>{
 
 /// 列表行模型：月头 / 日头 / 卡片，摊平成一维再交给 builder
 /// （比嵌套 for 更好控制 itemCount，也让分组逻辑留在可测的纯函数里）
-sealed class _Row {}
+///
+/// 每行带一个**跨流重发稳定**的 [rowKey]：列表按 key 复用行 State，
+/// 只有真正新出现的行才会播入场动画（详见 [_EntryCard]）。
+sealed class _Row {
+  const _Row(this.rowKey);
+
+  final Key rowKey;
+}
 
 class _MonthRow extends _Row {
-  _MonthRow(this.label, this.count, this.pinned);
+  _MonthRow(this.label, this.count, this.pinned)
+      : super(ValueKey('month-$pinned-$label'));
 
   final String label;
   final int count;
@@ -373,13 +398,16 @@ class _MonthRow extends _Row {
 }
 
 class _DayRow extends _Row {
-  _DayRow(this.label);
+  // 日头标签会跨组重名（置顶组与月份组都可能是「09月21日 周一」），
+  // 故用所属月组标签做作用域，保证 key 在整列内唯一、不会串行。
+  _DayRow(this.label, {required String scope})
+      : super(ValueKey('day-$scope-$label'));
 
   final String label;
 }
 
 class _EntryRow extends _Row {
-  _EntryRow(this.entry);
+  _EntryRow(this.entry) : super(ValueKey('entry-${entry.id}'));
 
   final TimelineEntry entry;
 }
@@ -389,18 +417,53 @@ List<_Row> _flatten(List<EntryMonthGroup> groups) {
   for (final g in groups) {
     rows.add(_MonthRow(g.label, g.count, g.pinned));
     for (final d in g.days) {
-      rows.add(_DayRow(d.label));
+      rows.add(_DayRow(d.label, scope: g.label));
       rows.addAll(d.items.map(_EntryRow.new));
     }
   }
   return rows;
 }
 
+/// 行增删过渡时长：克制在 180ms（红线 ≤250ms，且必须一次性、无循环）。
+const Duration _kRowAnimDuration = Duration(milliseconds: 180);
+
+/// 行入场/退场本体：淡入淡出 + 高度展开/收起，同为 180ms 一次性。
+///
+/// 为什么退场要带高度收起：删除时若只做淡出，卡片仍占着原高度，等流数据回来把它
+/// 摘掉的那一帧，下方所有行会「啪」地整体上跳一个卡片高——淡出反而把这一跳衬得更
+/// 明显。让高度同步收到 0，摘除时高度本就是 0，衔接是连续的。收起取顶部对齐，
+/// 行像是「往上收走」而不是原地压扁。
+class _RowTransition extends StatelessWidget {
+  const _RowTransition({required this.animation, required this.child});
+
+  final Animation<double> animation;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: animation,
+      child: SizeTransition(
+        sizeFactor: animation,
+        // Flutter 3.41 起 axisAlignment 被弃用（CI 是 --fatal-infos 口径，
+        // 弃用告警也算失败）。纵向展开的 -1 等价于顶部对齐。
+        alignment: Alignment.topCenter,
+        child: child,
+      ),
+    );
+  }
+}
+
 /// 续拉触发距离：距列表底部不足 400px 就开始取下一页
 const double _kLoadMoreThreshold = 400;
 
 /// 列表（W11）：下拉刷新 + 滚动续拉 + 底部一行轻量提示
-class _TimelineList extends ConsumerWidget {
+///
+/// W12 起额外负责「哪些条目是这次新插入的」：以条目 id 集合的前后差集判定。
+/// 为什么不自己比对整份扁平行列表（AnimatedList 那套）：行里还混着月头/日头，
+/// 一条记录增删会牵动多行下标，手算这种差分既易错又容易和 W11 的续拉/滚动位置打架。
+/// id 集合差集只回答「这条是不是新来的」，不碰任何下标，安全得多。
+class _TimelineList extends ConsumerStatefulWidget {
   const _TimelineList({
     required this.entries,
     this.root,
@@ -416,20 +479,54 @@ class _TimelineList extends ConsumerWidget {
   final bool loading;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_TimelineList> createState() => _TimelineListState();
+}
+
+class _TimelineListState extends ConsumerState<_TimelineList> {
+  /// 上一次见过的条目 id
+  late final Set<int> _knownIds;
+
+  /// 本次结果里新出现的条目 id：只有它们播入场动画
+  Set<int> _enteringIds = const {};
+
+  @override
+  void initState() {
+    super.initState();
+    // 首屏整体灌入不算「新插入」：否则冷启动会整列一起做动画，
+    // 而且首帧所有行从 0 高开始会让 ListView 误判视口、把全部卡片（含图片）一次建出来
+    _knownIds = widget.entries.map((e) => e.id).toSet();
+  }
+
+  @override
+  void didUpdateWidget(covariant _TimelineList oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final current = widget.entries.map((e) => e.id).toSet();
+    _enteringIds = current.difference(_knownIds);
+    _knownIds
+      ..clear()
+      ..addAll(current);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final limit = ref.watch(timelineLimitProvider);
     // 「还有更多」判定：本次结果长度 >= 当前 limit 即视为可能还有。
     // 不为此多查一次 count——分页本身就是为了省查询，多花一次 IO 就本末倒置了。
-    final hasMore = entries.length >= limit;
-    final rows = _flatten(groupByMonth(entries));
+    final hasMore = widget.entries.length >= limit;
+    final rows = _flatten(groupByMonth(widget.entries));
+    // key → 当前下标。给 ListView 的 findChildIndexCallback 用：插入/删除会让后续行
+    // 下标平移，有了它 sliver 仍能按 key 找回原 element、复用 State。
+    final indexByKey = <Key, int>{
+      for (var i = 0; i < rows.length; i++) rows[i].rowKey: i,
+    };
 
     return RefreshIndicator(
-      onRefresh: () => _onRefresh(ref),
+      onRefresh: _onRefresh,
       child: NotificationListener<ScrollNotification>(
         // 返回 false：让通知继续向上冒泡，RefreshIndicator 才收得到滑动手势
         onNotification: (notification) {
           if (notification.metrics.extentAfter < _kLoadMoreThreshold) {
-            _loadMore(ref);
+            _loadMore();
           }
           return false;
         },
@@ -439,20 +536,27 @@ class _TimelineList extends ConsumerWidget {
           padding: const EdgeInsets.only(top: 4, bottom: 96),
           // 预渲染视口外的缓冲：滑动时提前备好下一屏，减少"边滑边建"的抖动
           scrollCacheExtent: const ScrollCacheExtent.viewport(1.0),
+          findChildIndexCallback: (key) => indexByKey[key],
           itemCount: rows.length + 1,
           itemBuilder: (context, i) {
             if (i == rows.length) {
               return _ListFooter(
                 // 续拉期间 hasMore 会因为 limit 已上调而短暂为 false，
                 // 所以「正在加载」要单独看 loading，别在这一瞬间闪出「已经到底了」
-                text: loading || hasMore ? '正在加载…' : '已经到底了',
+                text: widget.loading || hasMore ? '正在加载…' : '已经到底了',
               );
             }
             final row = rows[i];
             return switch (row) {
-              _MonthRow() => _MonthHeader(row: row),
-              _DayRow() => _DayHeader(row: row),
-              _EntryRow() => _EntryCard(row.entry, root: root),
+              // 月头/日头只是分组装饰，出现/消失不做动画（否则加一条会连带动一片）
+              _MonthRow() => _MonthHeader(key: row.rowKey, row: row),
+              _DayRow() => _DayHeader(key: row.rowKey, row: row),
+              _EntryRow() => _EntryCard(
+                  row.entry,
+                  key: row.rowKey,
+                  root: widget.root,
+                  entering: _enteringIds.contains(row.entry.id),
+                ),
             };
           },
         ),
@@ -461,7 +565,7 @@ class _TimelineList extends ConsumerWidget {
   }
 
   /// 续拉一页：把 limit 加一页，流自动带着新 limit 重查
-  void _loadMore(WidgetRef ref) {
+  void _loadMore() {
     final state = ref.read(timelineStreamProvider);
     // 上一页还没回来就不再叠加，否则一次滑动会把 limit 连加好几页
     if (state.isLoading) return;
@@ -472,7 +576,7 @@ class _TimelineList extends ConsumerWidget {
   }
 
   /// 下拉刷新：先复位条数再 invalidate，否则刷新后仍按续拉后的大 limit 重查
-  Future<void> _onRefresh(WidgetRef ref) async {
+  Future<void> _onRefresh() async {
     ref.read(timelineLimitProvider.notifier).state = kTimelinePageSize;
     ref.invalidate(timelineStreamProvider);
     try {
@@ -507,7 +611,7 @@ class _ListFooter extends StatelessWidget {
 }
 
 class _MonthHeader extends StatelessWidget {
-  const _MonthHeader({required this.row});
+  const _MonthHeader({super.key, required this.row});
 
   final _MonthRow row;
 
@@ -543,7 +647,7 @@ class _MonthHeader extends StatelessWidget {
 }
 
 class _DayHeader extends StatelessWidget {
-  const _DayHeader({required this.row});
+  const _DayHeader({super.key, required this.row});
 
   final _DayRow row;
 
@@ -599,16 +703,58 @@ class _ThumbTile extends StatelessWidget {
   }
 }
 
-class _EntryCard extends ConsumerWidget {
-  const _EntryCard(this.entry, {this.root});
+class _EntryCard extends ConsumerStatefulWidget {
+  const _EntryCard(this.entry, {super.key, this.root, required this.entering});
 
   final TimelineEntry entry;
 
   /// App 支持目录（null 时图片位显示占位色块，不发起异步）
   final String? root;
 
+  /// 本次流更新里这条记录是否为新插入（决定是否播入场动画）
+  final bool entering;
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_EntryCard> createState() => _EntryCardState();
+}
+
+class _EntryCardState extends ConsumerState<_EntryCard>
+    with SingleTickerProviderStateMixin {
+  /// 0 = 收起/透明，1 = 展开/不透明。入场从 0 播到 1，删除时反播做退场。
+  late final AnimationController _ctrl = AnimationController(
+    vsync: this,
+    duration: _kRowAnimDuration,
+  );
+
+  late final Animation<double> _curve =
+      CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic);
+
+  @override
+  void initState() {
+    super.initState();
+    // 只有「这次新插入」的那条才播入场；滚动重建、筛选重发、下拉刷新拿到的旧行
+    // 直接落到终态——否则来回滚动一遍，划回来就会看见整屏卡片又闪一次。
+    if (widget.entering) {
+      _ctrl.forward();
+    } else {
+      _ctrl.value = 1;
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      _RowTransition(animation: _curve, child: _buildCard(context));
+
+  /// 卡片本体单独拆出来：动画外壳套在最外层，卡片内部结构保持原样，
+  /// 免得为了包一层过渡把整段布局重排缩进。
+  Widget _buildCard(BuildContext context) {
+    final entry = widget.entry;
     final moodColor = entry.mood == null ? null : _moodColors[entry.mood!];
     // 有缩略图用缩略图，没有（W4 期历史数据）回退原图，但解码尺寸仍受限
     final thumbRel = entry.firstAssetThumbPath ?? entry.firstAssetRelPath;
@@ -617,7 +763,7 @@ class _EntryCard extends ConsumerWidget {
         borderRadius: BorderRadius.circular(16),
         onTap: () => context.push('/detail?id=${entry.id}'),
         // 长按出操作菜单：置顶 / 删除（W7 置顶收藏）
-        onLongPress: () => _showEntryMenu(context, ref, entry),
+        onLongPress: () => _showEntryMenu(context),
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: Row(
@@ -635,7 +781,8 @@ class _EntryCard extends ConsumerWidget {
                     // Hero：卡片缩略图飞向详情页大图，形成连续的空间感（W10）
                     ? Hero(
                         tag: entryThumbHeroTag(entry.id),
-                        child: _ThumbTile(rel: thumbRel, root: root, size: 52),
+                        child: _ThumbTile(
+                            rel: thumbRel, root: widget.root, size: 52),
                       )
                     : Icon(
                         switch (entry.type) {
@@ -709,8 +856,8 @@ class _EntryCard extends ConsumerWidget {
     );
   }
 
-  Future<void> _showEntryMenu(
-      BuildContext context, WidgetRef ref, TimelineEntry entry) async {
+  Future<void> _showEntryMenu(BuildContext context) async {
+    final entry = widget.entry;
     final actions = ref.read(timelineActionsProvider);
     final messenger = ScaffoldMessenger.of(context);
     await showModalBottomSheet<void>(
@@ -739,30 +886,48 @@ class _EntryCard extends ConsumerWidget {
             ListTile(
               leading: const Icon(Icons.delete_outline),
               title: const Text('移到回收站'),
-              onTap: () async {
+              onTap: () {
                 Navigator.pop(context);
-                try {
-                  await actions.softDelete(entry.id);
-                  if (!context.mounted) return;
-                  messenger.showSnackBar(
-                    SnackBar(
-                      content: const Text('已移到回收站'),
-                      action: SnackBarAction(
-                        label: '撤销',
-                        onPressed: () => actions.restore(entry.id),
-                      ),
-                    ),
-                  );
-                } on Exception catch (error) {
-                  if (!context.mounted) return;
-                  messenger.showSnackBar(SnackBar(content: Text('删除失败：$error')));
-                }
+                // 先播退场再落库（见 _deleteWithExit）。这里不 await：
+                // 弹层自身的关闭不该和卡片动画的时序绑在一起。
+                unawaited(_deleteWithExit());
               },
             ),
           ],
         ),
       ),
     );
+  }
+
+  /// 删除：先播 180ms 退场，再落库。
+  ///
+  /// 为什么不 `await _ctrl.reverse()`：TickerFuture 在卡片被上游流回收（dispose）时
+  /// 不会完成，await 会永久挂起。这里改用固定短延时的时序，落库是否执行与动画壳的
+  /// 存活无关。
+  Future<void> _deleteWithExit() async {
+    final entry = widget.entry;
+    final actions = ref.read(timelineActionsProvider);
+    final messenger = ScaffoldMessenger.of(context);
+    unawaited(_ctrl.reverse());
+    await Future<void>.delayed(_kRowAnimDuration);
+    try {
+      await actions.softDelete(entry.id);
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(
+          content: const Text('已移到回收站'),
+          action: SnackBarAction(
+            label: '撤销',
+            onPressed: () => actions.restore(entry.id),
+          ),
+        ),
+      );
+    } on Exception catch (error) {
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(content: Text('删除失败：$error')));
+      // 删除失败要把卡片淡回来，不能把它留在半透明的「已退场」状态
+      _ctrl.forward();
+    }
   }
 }
 

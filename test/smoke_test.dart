@@ -61,11 +61,13 @@ void main() {
     await pumpApp(tester);
     expect(find.text('素页'), findsOneWidget);
     expect(find.text('阶段 0 启动'), findsOneWidget);
+    // W12：底部 Tab 收敛为 4 个（时间轴 / 相册 / 学习 / 我的）
     expect(find.text('时间轴'), findsOneWidget);
     expect(find.text('相册'), findsOneWidget);
     expect(find.text('学习'), findsOneWidget);
-    expect(find.text('笔记本'), findsOneWidget);
     expect(find.text('我的'), findsOneWidget);
+    // 「笔记本」不再是独立 Tab，入口收进「我的」；时间轴页面上不该出现它
+    expect(find.text('笔记本'), findsNothing);
     await drainTimers(tester);
   }, timeout: const Timeout(Duration(seconds: 60)));
 
@@ -100,12 +102,30 @@ void main() {
     await drainTimers(tester);
   }, timeout: const Timeout(Duration(seconds: 60)));
 
-  testWidgets('Tab 切换：笔记本页显示生活/学习双空间', (tester) async {
+  testWidgets('W12 Tab：4 个 Tab 来回切换，笔记本从「我的」入口进入', (tester) async {
     await pumpApp(tester);
+
+    // 导航栏标签与页面标题会同名（如「我的」），故一律用 NavigationBar 作用域限定
+    Finder navTab(String label) => find.descendant(
+          of: find.byType(NavigationBar),
+          matching: find.text(label),
+        );
+
+    // 我的 → 时间轴 → 我的：主 Tab 之间来回切换仍要成立（保留既有覆盖）
+    await tester.tap(navTab('我的'));
+    await settleFrames(tester);
+    await tester.tap(navTab('时间轴'));
+    await settleFrames(tester);
+    expect(find.text('素页'), findsOneWidget);
+    await tester.tap(navTab('我的'));
+    await settleFrames(tester);
+
+    // 「我的」Tab 上浮出笔记本入口，点进去仍是生活/学习双空间
     await tester.tap(find.text('笔记本'));
     await settleFrames(tester);
     expect(find.text('生活空间'), findsOneWidget);
     expect(find.text('学习空间'), findsOneWidget);
+
     await drainTimers(tester);
   }, timeout: const Timeout(Duration(seconds: 60)));
 }
