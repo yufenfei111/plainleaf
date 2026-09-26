@@ -4,6 +4,30 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 每个里程碑（M1-M5）打 tag 时在此补写正式条目。
 
+## 里程碑索引
+
+| 里程碑 | tag | 里程碑点 | 阶段 | 收官验证 |
+|---|---|---|---|---|
+| M1 | `v0.1.0-alpha` | 2026-09-20（`1081610`） | 阶段 1 · MVP 记录内核（W2–W5） | 32/32 passed，core 手写覆盖率 73.5% |
+| M2 | `v0.2.0` | 2026-09-22（`b457a3a`） | 阶段 2 · 相册与组织（W6–W9） | W7 阶段 50/50 passed，覆盖率 79.3%（W8/W9 未单独记录测试数） |
+| M3 | `v0.3.0` | 2026-09-26（`c1af9db`） | 阶段 3 · 日记与学习（W10–W12） | 132/132 passed |
+| M4 | `v0.4.0-beta` | 2026-09-26（`16326e3`） | 阶段 4 · 安全与分享（W13–W15） | 191/191 passed，analyze 0 issue |
+| M5 | `v1.0.0` | 待定 | 阶段 5 · 发布（W16） | 见 `docs/release-checklist-w16.md` |
+
+**tag 打点口径**：里程碑 tag 打在「该阶段最后一份验收文档落地的那个提交」上，而不是阶段内
+某个功能提交。四个 tag 均为 annotated，说明文字里写明了各自的打点依据。
+核对手令：`git tag -l`、`git show v0.2.0`。
+
+**里程碑线与版本号的关系**：`pubspec.yaml` 的 version 形如 `<里程碑线>+<周次>`，
+`0.4.0-beta+15` 即"阶段 4 线、第 15 周"（Android versionCode 就是那个周次）。
+关于页展示读 `lib/app/app_version.dart`，由 `tool/check_version.dart` 在 CI 里强制与
+pubspec 一致——不一致直接红，这是 W14 那次版本号漂移事故留下的机械门禁。
+
+**归档说明（如实记录，不补写）**：W8（详情页打磨 + 空态引导，`a4db45a`）与 W9（主题系统
++ 设置页 + Markdown 导入，`b457a3a`）当时未在下方单独成节，内容散落在相邻周条目里；
+需要追溯时直接看这两个提交。另：W10 / W11 两节的阶段标注原写作"阶段 2"，
+已按路线图（阶段 3 = W10–W12）更正。
+
 ## [Unreleased]
 
 > **版本号规则（W14 起，机制性修复）**
@@ -110,7 +134,7 @@
   避免每个 Widget 各写一遍 try/catch
 - 测试：test/w7_test.dart 12 例；全套 **50/50 passed**，core 手写覆盖率 77.2% → **79.3%**
 
-### Fixed（阶段 2 · W10 自检：性能 / 交互 / 缺陷修复，2026-09-22）
+### Fixed（阶段 3 · W10 自检：性能 / 交互 / 缺陷修复，2026-09-22）
 
 自检方式：全量代码走查（61 个 dart 文件）+ `dart analyze --fatal-infos` + `flutter test`；
 完整问题清单、修复方案与后续计划见 `docs/verification-w10.md`。
@@ -144,7 +168,7 @@
 
 - 测试：test/w10_fixes_test.dart 5 例；全套 **81/81 passed**，`dart analyze --fatal-infos` 0 issue
 
-### Added（阶段 2 · W11：W10 收尾 + 体验与信息架构第一期，2026-09-23）
+### Added（阶段 3 · W11：W10 收尾 + 体验与信息架构第一期，2026-09-23）
 
 5 个子代理并行改造 12 个文件、新增 7 个文件（+1274 / −149）。**未引入任何第三方依赖**，
 依赖选型比对与完整自查见 `docs/verification-w11.md`。
@@ -316,6 +340,33 @@
 - 布局观感需真机确认（单测证明不了"更好看"）。
 - 保存到系统相册需真机验证：测试宿主没有 gal 插件，本机只覆盖了降级路径。
 
-## [0.1.0] - unreleased
+## W16 发布准备（2026-09-26）
 
-- M1 目标（2026-10-11）：MVP 记录内核（编辑器/图片管线/搜索/备份），发布 v0.1.0-alpha tag
+发布前打通 release 构建链，并修掉一个**只在 release 包出现**的缺陷。
+
+### Fixed
+- **release 包缺少 INTERNET 权限**：Flutter 模板只在 debug / profile 变体里声明它
+  （那是给 hot reload 用的），`main` 里没有。后果是 release 包完全无法联网 ——
+  W13 的 WebDAV 云备份整体静默失效（UI 只会说"连不上服务器"），
+  而 debug 包与 `flutter test` 一切正常，本机测不出来。已在 `main` 显式声明。
+
+### Added
+- release 构建配置：`android/app/build.gradle.kts` 读 `android/key.properties` 走正式签名，
+  文件缺失时降级为 debug 签名并打醒目警告；release 开启 `isMinifyEnabled` + `isShrinkResources`
+- `android/app/proguard-rules.pro`：Flutter 引擎与嵌入层、6 个平台插件的 keep 规则，
+  以及 Play Core（引擎可选依赖）的 `-dontwarn`；保留 SourceFile 与行号
+- `android/key.properties.example`（模板 + 密钥备份提醒）、`PRIVACY.md`（隐私政策）、
+  `docs/release-checklist-w16.md`（发布检查清单）
+- 四个里程碑 tag：`v0.1.0-alpha` / `v0.2.0` / `v0.3.0` / `v0.4.0-beta`，见顶部索引
+
+### 已知构建环境约束
+- **release 构建必须在纯 ASCII 路径下进行**：Dart 的 AOT 编译器 `gen_snapshot` 读不了
+  非 ASCII 路径（中文变乱码、报 `Unable to read file ...app.dill`，三个 ABI 同时失败），
+  而本项目路径与系统用户名均含中文。debug 构建不走 AOT 所以一直正常。
+  目录联接（junction）无效——Gradle 会解析回真实路径。步骤见发布检查清单。
+
+### 验证
+- release APK 构建成功：`app-release.apk` 71.2 MB，`BUILD_EXIT=0`
+- 产物核对：versionCode=15、versionName=0.4.0-beta、minSdk=24、targetSdk=36、
+  label=素页；权限含 INTERNET / USE_BIOMETRIC / WRITE_EXTERNAL_STORAGE(max 29) / USE_FINGERPRINT
+- 签名当前为 debug（无 `key.properties`，符合降级预期）；正式签名与真机走查待执行

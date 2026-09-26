@@ -68,6 +68,33 @@ dev_dependencies:
   build_runner: ^2.4.0
   drift_dev: ^2.20.0
   path_provider_platform_interface: ^2.1.0  # 测试桩：媒体存储路径覆盖
+  # W16 图标生成：一次性工具，只进开发依赖，不进运行时、不增大包体
+  flutter_launcher_icons: ^0.14.4
 
 flutter:
   uses-material-design: true
+
+# W16 启动图标（阶段 5 发布）。
+#
+# 源图说明（勿随手替换）：
+#   fullbleed   米色底 #FCF2E5 + 深棕标记 #3A3026 的满幅图，供传统图标与 Windows 使用。
+#               已确保**无 alpha 通道** —— 原稿有约 1% 像素带半透明（图案边缘的导出残余），
+#               不拍平会在部分 launcher 上沿图案边缘露出一圈异色描边。
+#   foreground  透明底标记，供 Android 8+ 自适应图标的前景层使用。
+#               其内容占画布 61.9%，正好落在自适应图标 66% 安全区规范内（原设计即按规范出图）。
+#
+# iOS 暂不生成：W16 只发 APK + Windows 包，且 iOS 图标另有"强制不透明"的硬要求，
+# 需真机通道齐备后一并处理（届时复用同一份 fullbleed 即可）。
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/branding/app-icon-fullbleed.png"
+  adaptive_icon_background: "#FCF2E5"
+  adaptive_icon_foreground: "assets/branding/app-icon-foreground.png"
+  # Windows 必须关闭工具生成：它的 windows.icon_size 默认 48，
+  # 只会产出**单张 48x48** 的 ico —— 比 Flutter 模板原本的 4 尺寸（16/32/48/256）还差，
+  # 高 DPI 任务栏与 Alt-Tab 会明显发虚。而我们的素材 app-icon.ico 内含 7 个尺寸
+  # （16/24/32/48/64/128/256），是更完整的成品。
+  # 所以改由 run_icons.bat 把素材直接复制过去，不经过工具。
+  windows:
+    generate: false
