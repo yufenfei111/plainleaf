@@ -39,7 +39,16 @@
 -keepattributes SourceFile,LineNumberTable
 -renamesourcefileattribute SourceFile
 
-# ---- 通用：Tink / 密码学（cryptography 为纯 Dart，但 secure_storage 链上可能有 JCE）----
+# ---- Flutter 引擎的可选依赖：Play Core（动态功能分发）----
+# 引擎里引用了 com.google.android.play.core.*，但只有用到 deferred components
+# （Play Store 动态分发）时才真正需要它们。本项目不使用该特性，这些类不在依赖图上，
+# 于是 R8 会以 "Missing classes detected while running R8" 直接失败（不是警告）。
+# 下面这行覆盖了 R8 自动生成的全部 11 条建议（见构建产物
+# build/app/outputs/mapping/release/missing_rules.txt）。
+-dontwarn com.google.android.play.core.**
+
+# ---- 通用：可能缺席的可选密码学/注解后端 ----
+# cryptography 是纯 Dart，但 flutter_secure_storage 链上会碰到 JCE 实现。
 -dontwarn javax.annotation.**
 -dontwarn org.bouncycastle.**
 -dontwarn org.conscrypt.**
