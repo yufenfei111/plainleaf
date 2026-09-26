@@ -104,6 +104,9 @@
 
 - **debug APK 构建通过**：`flutter build apk --debug` → `build/app/outputs/flutter-apk/app-debug.apk`
   （首次带插件 135s，增量 20s）。
+- **版本号机制修复**：`version` 此前停在 `0.2.0+2`（W10 起未动，横跨 M3 与阶段 4 前两周），
+  现已改为唯一真源 + CI 门禁，取 `0.4.0-beta+14`。`aapt2 dump badging` 实测确认
+  `versionCode` 由 `2` 变为 `14`、`versionName` 由 `0.2.0` 变为 `0.4.0-beta`。
 - **平台侧改动确实进了包**：`aapt2 dump permissions app-debug.apk` 输出含
   `android.permission.USE_BIOMETRIC`（我们声明的）与 `USE_FINGERPRINT`（local_auth 自动合并）——
   比"看构建日志猜"可靠。

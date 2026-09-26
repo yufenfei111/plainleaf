@@ -6,6 +6,16 @@
 
 ## [Unreleased]
 
+> **版本号规则（W14 起，机制性修复）**
+> - `pubspec.yaml` 的 `version` 是**唯一真源**，格式 `<里程碑线>+<buildNumber>`，
+>   buildNumber 取**周次**且单调递增（如 `0.4.0-beta+14` = 阶段 4 第 14 周）。
+>   Android 的 `versionCode` 就是它——"装没装上新的包"从此一眼可判。
+> - 关于页展示的版本读 `lib/app/app_version.dart`，由 `tool/check_version.dart`
+>   在 CI（`ci.yml` 的 analyze 之前）强制与 pubspec 一致，不一致直接红。
+> - 背景：此前 `version` 停在 `0.2.0+2`，从 W10 一路用到 W14（4 周、含 M3 里程碑），
+>   而关于页还硬编码着 `v0.2.0（M2）`——两处一起停着，看起来"自洽"所以没人发现。
+>   同一问题 W10 修过一次又复发，因此这次改成门禁而不是备注。
+
 ### Added（阶段 0 · 立项与环境，2026-09-04 ~ 09-15）
 - Flutter 工程初始化：fvm 锁定 3.47.2，包名 com.plainleaf.app，Android/iOS/Windows 三平台脚手架（Day 1）
 - 国内构建链路：Gradle 腾讯云镜像 + 依赖阿里云镜像优先（Day 1，见 docs/devlog-w1.md）
