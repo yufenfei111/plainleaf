@@ -12,7 +12,8 @@
 | 项 | 结果 | 证据 |
 |---|---|---|
 | `flutter test` | ✅ **132/132 All tests passed** | 用例数由 104 → 132（+28），无一条被删除或跳过 |
-| `dart analyze --fatal-infos lib test` | ✅ **No issues found** | CI 口径（info 级也算失败） |
+| `dart analyze --fatal-infos lib test tool` | ✅ **No issues found** | CI 口径（info 级也算失败）。**必须带 `tool/`** —— CI 跑的是全项目 `flutter analyze`，只查 lib+test 会漏 |
+| CI（GitHub Actions） | 🟢 见 PR #26 | `flutter analyze --fatal-infos`（全项目） |
 | 导航 branch 数 == destinations 数 | ✅ | 实跑 `smoke_test` 的 4 Tab 往返用例通过，无断言抛出 |
 | 既有行为回归 | ✅ | 时间轴分页/下拉刷新/筛选弹层/月分组/置顶组/三态、编辑器自动保存、备份恢复全部原样通过 |
 | 新功能三态 | ✅ | 日历与那年今日各自的加载/空/错误态齐备（那年今日空态塌成 0 尺寸） |

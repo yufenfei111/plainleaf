@@ -13,7 +13,7 @@
 - 远程：`https://github.com/yufenfei111/plainleaf.git`
 - 技术栈：Flutter 3.47.2（fvm 锁版）+ Riverpod + go_router + Drift(SQLite)，feature-first 分层
 - **唯一开发依据**：`docs/DEVELOPMENT.md`（与顶层 `PLAINLEAF-最终开发文档-v1.1.md` 一致）
-- 起点基线（W12 完成态）：**`flutter test` 132/132 通过、`dart analyze --fatal-infos lib test` 0 issue**
+- 起点基线（W12 完成态）：**`flutter test` 132/132 通过、`dart analyze --fatal-infos lib test tool` 0 issue**
 - 当前分支：`feat/w12-calendar-nav`（本地领先 origin/dev 14 个提交，尚未推送）
 - W13 建议分支：`feat/w13-webdav-backup`（从 dev 切出）
 
@@ -54,7 +54,7 @@
     "C:/Users/雨/AppData/Local/Temp/run_task.py" plainleaf_all     # list | plainleaf_all | plainleaf_test
 ```
 
-任务动作指向项目里的 `run_all.bat`（内容：`flutter test` + `dart analyze --fatal-infos lib test`
+任务动作指向项目里的 `run_all.bat`（内容：`flutter test` + `dart analyze --fatal-infos lib test tool`
 → 写 `test_all.txt`），轮询该文件的 `^EXIT=` 行即可（全量约 2–4 分钟）。
 `run_all.bat` / `run_test.bat` / `test_all.txt` 已在 `.gitignore` 里，不要提交。
 
@@ -63,7 +63,9 @@
   否则本机代理会劫持 flutter_tester 的本地 WebSocket；
 - `flutter analyze` 在**中文路径下必崩**（握手 JSON 百分号编码触发 `FormatException`），
   两端都用 `dart analyze lib test` 代替；
-- CI 口径是 `dart analyze --fatal-infos lib test`（**info 级 lint 也算失败**），提交前本地跑。
+- CI 口径是 `dart analyze --fatal-infos lib test tool`（**info 级 lint 也算失败**），
+  **一定要带上 `tool/`**：CI 跑的是全项目 `flutter analyze`，只查 `lib test` 会漏目录里的问题，
+  出现「本地全绿、CI 红」的假象（W12 就踩过这一次，代价是一次 CI 失败）。提交前本地照上面跑。
 
 ---
 
@@ -107,7 +109,7 @@
 | 项 | 标准 |
 |---|---|
 | `flutter test` | 全部通过，且用例数 **≥132**（不许为了绿而删断言） |
-| `dart analyze --fatal-infos lib test` | **0 issue** |
+| `dart analyze --fatal-infos lib test tool` | **0 issue** |
 | 既有行为回归 | 备份/恢复、时间轴、相册、编辑器自动保存全部不变 |
 | 网络红线 | 无真实凭据入库；断网/401/超时都有对应用例；CI 不依赖外网 |
 | 手动走查 | 坚果云真实账号上传 → 另一台设备（或卸载重装）恢复 → 数据一致 |
