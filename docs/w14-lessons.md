@@ -42,6 +42,18 @@
 | U5 | 何时重新上锁 | 切到后台（paused/hidden）立刻重锁，不用计时器。计时方案要么太短烦人、要么太长形同虚设 |
 | U6 | PDF 中文字体 | 实测 `.ttc`（msyh.ttc）**解析必然失败**（`FormatException: Unexpected extension byte`），只收 `.ttf/.otf`；找不到就抛 `ExportException` **明确失败**，绝不产出打开全是方块的"成功"文件 |
 | U7 | CI 上没有中文字体怎么办 | 相关用例在拿不到字体时 `return` 跳过，而不是把流水线变红 |
+| U8 | **`local_auth` 在 Android 上要求宿主 Activity 是 `FlutterFragmentActivity`**，并需要 `USE_BIOMETRIC` 权限；默认脚手架给的是 `FlutterActivity`，也没有该权限 | 真机点「用指纹解锁」会抛异常 → 被降级逻辑吞成"设备不支持指纹" → **功能静默不可用**，而本机 `flutter test` 在架构上根本走不到这条路（缺插件时只返回降级值）。已改 `MainActivity.kt` + `AndroidManifest.xml` |
+| U9 | 怎么确认平台侧的改动真的进了 APK | `aapt2 dump permissions <apk>` 直接列包内权限（本次实测能看到 `USE_BIOMETRIC` + local_auth 自动合并的 `USE_FINGERPRINT`）。比"看构建日志猜"可靠 |
+
+---
+
+## 五、打包通道（本轮新增）
+
+| # | 事实 | 说明 |
+|---|---|---|
+| B1 | `flutter build apk --debug` 在计划任务通道里可跑 | 首次带插件的构建 135s，增量 20s；产物 `build/app/outputs/flutter-apk/app-debug.apk`（debug 约 190MB，含调试符号） |
+| B2 | **构建要带代理**，测试要去代理 | 方向相反：Gradle 需要下载依赖；而 `flutter test` 的本地 WebSocket 会被 `HTTP_PROXY` 劫持 |
+| B3 | 改完 Kotlin/Manifest 后**必须重跑构建** | 若构建早于改动启动，第一次产物不含改动；判据：第二次构建是否 `up-to-date`（Gradle 输入哈希一致 → 说明第一次已吃到新源） |
 
 ---
 

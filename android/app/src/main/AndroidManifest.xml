@@ -1,4 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- W14 应用锁：指纹快速解锁（local_auth 走 AndroidX BiometricPrompt）。
+         这个权限是普通权限（normal），安装时不弹框、不影响上架说明。 -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC"/>
     <application
         android:label="素页"
         android:name="${applicationName}"

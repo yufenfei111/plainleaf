@@ -48,6 +48,8 @@
 | `lib/features/settings/presentation/settings_page.dart` | 应用锁入口（启用/改密/关闭）、导出加密选项、加密包恢复、PDF 导出入口 |
 | `lib/features/settings/presentation/providers/webdav_providers.dart` | 记录最近一次安全失败原因，供 UI 补密码重试 |
 | `lib/main.dart` | 门控挂在 `MaterialApp` 内的 builder 上 |
+| `android/.../MainActivity.kt` | `FlutterActivity` → **`FlutterFragmentActivity`**（`local_auth` 的 Android 端硬要求，否则真机点指纹抛异常后被降级吞掉） |
+| `android/app/src/main/AndroidManifest.xml` | 新增 `USE_BIOMETRIC` 权限 |
 | `pubspec.yaml` / `pubspec.lock` | 新增 4 个依赖（见下） |
 
 ---
@@ -96,13 +98,34 @@
 
 ---
 
-## 六、真机走查清单（**未做**，需真机 + 用户账号）
+## 六、打包与走查
 
-1. 应用锁：Android 真机开启 → 冷启动是否出现锁屏；录有指纹时是否出现「用指纹解锁」。
-2. 息屏/切后台再回来，是否立刻重新上锁（符合"看不见 App 就等于退出"约定）。
-3. 加密备份：导出 `.plbk` 拷到电脑用 7z 打开——应**打不开**（整个包是密文，符合预期）。
-4. PDF 导出：真机上能否生成中文 PDF（字体候选是否命中该 ROM）；未命中时应给出"设备缺中文字体"提示。
-5. 坚果云：加密包上传 → 下载恢复（需用户自己的账号与另一台设备）。
+### 已在本机完成的验证（无需真机）
+
+- **debug APK 构建通过**：`flutter build apk --debug` → `build/app/outputs/flutter-apk/app-debug.apk`
+  （首次带插件 135s，增量 20s）。
+- **平台侧改动确实进了包**：`aapt2 dump permissions app-debug.apk` 输出含
+  `android.permission.USE_BIOMETRIC`（我们声明的）与 `USE_FINGERPRINT`（local_auth 自动合并）——
+  比"看构建日志猜"可靠。
+- **"加密真的生效"对照实验**（本地生成一对样例包 `sample-*.plbk`，已在 .gitignore）：
+
+  | 文件 | 头部 | 能否当 zip 打开 |
+  |---|---|---|
+  | `sample-plain.plbk` | `PK\x03\x04` | ✅ 可见 `plainleaf.sqlite` + `manifest.json` |
+  | `sample-encrypted.plbk` | `PLSEC1\x10\x0c` | ❌ `BadZipFile: File is not a zip file` |
+
+  即：加密包连"里面有几个文件、各叫什么名字"都看不出来——这正是整包加密的目的。
+
+### 仍需真机 / 账号（**未做**）
+
+1. 应用锁：真机开启后冷启动是否出现锁屏；录有指纹时是否出现「用指纹解锁」并弹出系统验证框。
+2. 息屏 / 切到其他 App 再回来，是否立刻重新上锁。
+3. PDF 导出：真机能否生成中文 PDF（字体候选是否命中该 ROM）；未命中时是否提示"设备缺中文字体"。
+4. 加密包恢复全流程：本地列表应显示 🔒 与"已加密"，选中后弹密码框，密码错提示
+   「密码不正确，或者这份数据已被改动过」；W13 导出的明文老包仍能正常恢复。
+5. **覆盖安装（不要卸载）**：从 W13 版本升级安装 → 原 WebDAV 配置应仍在
+   （首次启动自动迁移到安全容器），不必重填。卸载重装会连安全容器一起清掉，属预期行为。
+6. 坚果云：加密包上传 → 下载恢复（需用户自己的账号与另一台设备）。
 
 ---
 
