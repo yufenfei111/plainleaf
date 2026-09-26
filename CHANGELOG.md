@@ -208,6 +208,38 @@
 
 - 测试：新增 test/w12_{calendar,onthisday,study}_test.dart 共 28 例，**本机实跑 132/132 通过**
 
+### Added（阶段 4 · W13 云备份（WebDAV 单向），2026-09-26）
+
+- **WebDAV 单向备份**：设置页「云备份（WebDAV）」卡片，支持配置服务器地址/账号/密码、
+  测试连接、立即上传、从云端挑选备份包恢复（取代原先 disabled 的占位入口）。
+  只做上传与恢复，**不含双向 LWW 同步**（按路线图已移出 v1.0）。
+- 网络层 `lib/core/sync/`：`webdav_client.dart`（MKCOL/PUT/GET/PROPFIND，基于 `dart:io`）、
+  `webdav_config.dart`（凭据存储）、`cloud_backup_service.dart`（上传/恢复编排）。
+- 错误体系扩展：`NetworkException` + `NetworkErrorKind`（offline/unauthorized/notFound/
+  timeout/server/protocol），UI 只展示按分类给出的一句话文案，不展示堆栈与 URL。
+- 写入门面 `CloudBackupActions` 与状态 Provider `cloudBackupStatusProvider`，
+  页面只调用 + 读状态，不直接碰服务层。
+
+**关键取舍**
+
+- **零新增依赖**：HTTP 用 `dart:io` 的 `HttpClient` 实现，未引 `http`/`dio`；
+  凭据存支持目录根部的 `webdav.json`（`BackupService` 只打包 `media/` `thumb/`，
+  因此**不会随备份包上传到云端**——把云盘口令写进上传包等于给远端递钥匙）。
+- 上传前先本地 `verify()`，坏包绝不上传；恢复前先 `verify()`，不过直接中止、不碰当前数据；
+  落地一律复用 `BackupService.restore()`（内含**恢复前自动备份**与既有迁移路径）。
+- PROPFIND 的 XML 用受限正则只取 href/collection/getlastmodified/getcontentlength 四个字段，
+  写成纯静态函数并单测容错（无命名空间前缀、绝对 URL、坏日期）。
+
+**已知取舍 / 遗留**
+
+- `webdav.json` 仍是明文：本机无可用安全存储依赖且本轮不新增依赖，
+  待 **W14 落地 AES-GCM** 后升级为加密存储。
+- 坚果云真实账号实测未做（需要用户自己的账号与另一台设备），走查清单已写入
+  `docs/verification-w13.md` 第五节。
+
+- 测试：新增 test/w13_webdav_test.dart 共 14 例（本地假 HttpServer，CI 不依赖外网），
+  **本机实跑 146/146 通过**，CI 口径 `dart analyze --fatal-infos lib test tool` 0 issue。
+
 ## [0.1.0] - unreleased
 
 - M1 目标（2026-10-11）：MVP 记录内核（编辑器/图片管线/搜索/备份），发布 v0.1.0-alpha tag
