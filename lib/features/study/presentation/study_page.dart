@@ -6,7 +6,7 @@ import '../../../shared/widgets/skeleton.dart';
 import '../domain/entities/study_todo.dart';
 import 'providers/study_providers.dart';
 
-/// 学习 Tab（W2 接流 → W11 补录入/分组/软删）
+/// 学习 Tab（W2 接流 → W11 补录入/分组/软删 → W12 加今日完成数）
 class StudyPage extends ConsumerWidget {
   const StudyPage({super.key});
 
@@ -24,6 +24,9 @@ class StudyPage extends ConsumerWidget {
             padding: EdgeInsets.fromLTRB(12, 8, 12, 4),
             child: _Composer(),
           ),
+          // 今日概况压在录入行下面、不随列表滚动：抬眼就能看到今天走到哪一步，
+          // 滚到列表中间再回头看进度是反直觉的。
+          const _TodaySummary(),
           Expanded(
             child: todos.when(
               data: (list) => _TodoBody(todos: list),
@@ -121,6 +124,58 @@ class _ComposerState extends ConsumerState<_Composer> {
   }
 }
 
+/// 今日完成概况（W12）：一行文字 + 一根进度条
+///
+/// 为什么只做文字和进度条：这是「我今天走到哪了」的一眼读数，不是报表；
+/// 图表既超出需求，也会牵进一整套颜色与动画成本（且红线禁止新增图表库）。
+///
+/// 盘子为空时整个组件让位：下面的空态已经把「还没有任务」说清楚了，
+/// 上面再挂一条「今天完成 0 / 共 0」只是重复噪音。
+class _TodaySummary extends ConsumerWidget {
+  const _TodaySummary();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final stats = ref.watch(todayStatsProvider);
+    if (stats.total == 0) return const SizedBox.shrink();
+
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final muted = theme.textTheme.bodyMedium
+        ?.copyWith(color: colorScheme.onSurfaceVariant);
+
+    return Semantics(
+      container: true,
+      label: '今天完成 ${stats.done}，共 ${stats.total}',
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Text('今天完成 ${stats.done} / 共 ${stats.total}', style: muted),
+                const Spacer(),
+                Text('${stats.percent}%', style: muted),
+              ],
+            ),
+            const SizedBox(height: 6),
+            // 必须给 value：不带的 LinearProgressIndicator 是无限循环动画，
+            // 既违背「动画克制」，也会让等待静止的测试永远等不到。
+            LinearProgressIndicator(
+              value: stats.ratio,
+              minHeight: 6,
+              backgroundColor: colorScheme.surfaceContainerHighest,
+              color: colorScheme.primary,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// 列表正文：未完成在上、已完成折叠在下，各带条数
 class _TodoBody extends ConsumerWidget {
   const _TodoBody({required this.todos});
@@ -161,7 +216,7 @@ class _TodoBody extends ConsumerWidget {
           )
         else ...[
           _SectionHeader(label: '未完成', count: pending.length),
-          for (final t in pending) _TodoTile(todo: t, dismissible: true),
+          for (final t in pending) _TodoTile(todo: t),
         ],
         if (done.isNotEmpty) ...[
           const SizedBox(height: 8),
@@ -273,21 +328,27 @@ class _DoneSection extends ConsumerWidget {
           ),
         ),
         if (expanded)
-          for (final t in todos) _TodoTile(todo: t, dismissible: false),
+          // 已完成的一样可左滑：做完了才发现写错了/写重了，同样需要删掉，
+          // 而且它照样走软删 + 撤销，跟未完成条目一个待遇。
+          for (final t in todos) _TodoTile(todo: t),
       ],
     );
   }
 }
 
-/// 单条待办：未完成可左滑软删，勾选在 setDone
+/// 单条待办：未完成/已完成都可左滑软删，勾选在 setDone
 class _TodoTile extends ConsumerWidget {
-  const _TodoTile({required this.todo, required this.dismissible});
+  const _TodoTile({required this.todo});
 
   final StudyTodo todo;
-  final bool dismissible;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // 这两个引用要在这一行还活着的时候先攥住：软删一落库，数据流就会把本行
+    // 移出树，之后再用 build 期的 context / ref，撞上的都是「widget 已卸载」。
+    final messenger = ScaffoldMessenger.of(context);
+    final actions = ref.read(todoActionsProvider);
+
     final tile = CheckboxListTile(
       value: todo.done,
       onChanged: (v) async {
@@ -309,8 +370,6 @@ class _TodoTile extends ConsumerWidget {
       controlAffinity: ListTileControlAffinity.leading,
     );
 
-    if (!dismissible) return tile;
-
     final colorScheme = Theme.of(context).colorScheme;
     return Dismissible(
       key: ValueKey<int>(todo.id),
@@ -325,24 +384,40 @@ class _TodoTile extends ConsumerWidget {
       ),
       // 先写库再决定是否真的滑走：写失败就让这一行弹回来，
       // 避免出现「UI 删了、库里还在」的鬼影。
-      confirmDismiss: (direction) async {
+      confirmDismiss: (_) async {
         try {
-          await ref.read(todoActionsProvider).deleteTodo(todo.id);
-          return true;
+          await actions.deleteTodo(todo.id);
         } on Object catch (error) {
-          if (context.mounted) _showSnack(context, '删除失败：$error');
+          messenger
+            ..clearSnackBars()
+            ..showSnackBar(SnackBar(
+              content: Text('删除失败：$error'),
+              duration: const Duration(seconds: 2),
+            ));
           return false;
         }
+        // 「撤销」必须在这里弹，不能挂在 onDismissed 上：软删成功的那一刻本行
+        // 就被待办流移出树了，Dismissible 的收缩动画还没走完 widget 已经卸载，
+        // onDismissed 从此不再触发——用户永远等不到那条回头路。
+        _showUndoSnack(messenger, actions, todo);
+        return true;
       },
-      onDismissed: (_) => _showUndoSnack(context, ref, todo),
       child: tile,
     );
   }
 }
 
 /// 删除后的「撤销」提示：软删的意义就在这里——留一条回头路
-void _showUndoSnack(BuildContext context, WidgetRef ref, StudyTodo todo) {
-  ScaffoldMessenger.of(context)
+///
+/// 只收 messenger 与 actions 这两个「脱离 widget 也活着」的对象：这条提示常常
+/// 在这行待办已被移出树之后才被点，闭包里再回头碰页面上的 context / ref 就会
+/// 撞上「widget 已卸载」，撤销会静默失效——按了跟没按一样。
+void _showUndoSnack(
+  ScaffoldMessengerState messenger,
+  TodoActions actions,
+  StudyTodo todo,
+) {
+  messenger
     ..clearSnackBars()
     ..showSnackBar(
       SnackBar(
@@ -352,9 +427,14 @@ void _showUndoSnack(BuildContext context, WidgetRef ref, StudyTodo todo) {
           label: '撤销',
           onPressed: () async {
             try {
-              await ref.read(todoActionsProvider).restoreTodo(todo.id);
+              await actions.restoreTodo(todo.id);
             } on Object catch (error) {
-              if (context.mounted) _showSnack(context, '撤销失败：$error');
+              messenger
+                ..clearSnackBars()
+                ..showSnackBar(SnackBar(
+                  content: Text('撤销失败：$error'),
+                  duration: const Duration(seconds: 2),
+                ));
             }
           },
         ),

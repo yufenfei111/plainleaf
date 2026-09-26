@@ -14,6 +14,17 @@ class TimelineRow {
   const TimelineRow({required this.entry, this.firstAsset, this.notebook});
 }
 
+/// 日历/回忆用的一条轻量命中：只有主键与日期
+///
+/// 为什么不直接给 Entry：日历一次要看一整月，带正文的行读出来是纯浪费，
+/// 真正需要展示内容时再由 [_$EntriesDaoMixin] 的 watchOnThisDay 补详情。
+class EntryDateHit {
+  final int id;
+  final DateTime date;
+
+  const EntryDateHit({required this.id, required this.date});
+}
+
 @DriftAccessor(tables: [Entries, Assets, Notebooks])
 class EntriesDao extends DatabaseAccessor<PlainLeafDatabase>
     with _$EntriesDaoMixin {
@@ -44,34 +55,93 @@ class EntriesDao extends DatabaseAccessor<PlainLeafDatabase>
       ])
       ..limit(limit);
 
-    return query.watch().asyncMap((entryList) async {
-      if (entryList.isEmpty) return const <TimelineRow>[];
-      final ids = entryList.map((e) => e.id).toList();
+    return query.watch().asyncMap(_rowsFor);
+  }
 
-      final assetRows = await (select(assets)
-            ..where((a) =>
-                a.entryId.isIn(ids) &
-                a.deleted.equals(false) &
-                a.kind.equals('image'))
-            ..orderBy([(a) => OrderingTerm.asc(a.sortIndex)]))
+  /// 组装时间轴行：一次把首图与笔记本查齐（N 次 tao dao → 3 次查询）
+  ///
+  /// 抽成单独方法是因为 W12 起有了第二个消费方（那年今日）：
+  /// 与其把 map / 首图归并复制一遍，不如共用同一套组装逻辑。
+  Future<List<TimelineRow>> _rowsFor(List<Entry> entryList) async {
+    if (entryList.isEmpty) return const <TimelineRow>[];
+    final ids = entryList.map((e) => e.id).toList();
+
+    final assetRows = await (select(assets)
+          ..where((a) =>
+              a.entryId.isIn(ids) &
+              a.deleted.equals(false) &
+              a.kind.equals('image'))
+          ..orderBy([(a) => OrderingTerm.asc(a.sortIndex)]))
+        .get();
+    final notebookRows = await select(notebooks).get();
+
+    final firstAssetByEntry = <int, Asset>{};
+    for (final a in assetRows) {
+      final eid = a.entryId;
+      if (eid != null) firstAssetByEntry.putIfAbsent(eid, () => a);
+    }
+    final notebookById = {for (final n in notebookRows) n.id: n};
+
+    return [
+      for (final e in entryList)
+        TimelineRow(
+          entry: e,
+          firstAsset: firstAssetByEntry[e.id],
+          notebook: e.notebookId == null ? null : notebookById[e.notebookId!],
+        ),
+    ];
+  }
+
+  /// 日历/回忆视图用的一行轻量数据：**只有 id 与日期**，不带正文
+  ///
+  /// 日历热力只需要「哪天有几条」，把整行拉出来会把 contentDelta 这种
+  /// 大字段一起读进内存——一个月三十来条没事，日历一次看一整月就会放大。
+  /// 上层按列表自己在 Dart 里聚合（分组是常数级开销，换来的是不需要 SQLite
+  /// 日期函数：那些函数在不同版本可用性不一致，写错一个函数名要等运行时才炸）。
+  Stream<List<EntryDateHit>> watchEntryDates(DateTime from, DateTime to) {
+    final query = selectOnly(entries)
+      ..addColumns([entries.id, entries.entryDate])
+      ..where(
+        entries.deleted.equals(false) &
+            entries.status.equals('normal') &
+            entries.entryDate.isBiggerOrEqualValue(from) &
+            entries.entryDate.isSmallerThanValue(to),
+      )
+      ..orderBy([OrderingTerm.desc(entries.entryDate)]);
+
+    return query.watch().map(
+          (rows) => [
+            for (final r in rows)
+              EntryDateHit(
+                id: r.read(entries.id)!,
+                date: r.read(entries.entryDate)!,
+              ),
+          ],
+        );
+  }
+
+  /// 那年今日：往年同月同日写下、且不是今天的记录（新 → 旧，最多 limit 条）
+  ///
+  /// 过滤放在 Dart 层：月日匹配如果用 SQLite 日期函数写，换 engine 就有
+  /// 行为差异；个人库的量级里这一步是纳秒级，换确定性划算。
+  Stream<List<TimelineRow>> watchOnThisDay(DateTime today, {int limit = 3}) {
+    final from = DateTime(today.year - 20, 1, 1);
+    final to = DateTime(today.year, 1, 1);
+    return watchEntryDates(from, to).asyncMap((rows) async {
+      final hits = rows
+          .where((hit) =>
+              hit.date.month == today.month &&
+              hit.date.day == today.day &&
+              hit.date.year != today.year)
+          .take(limit)
+          .map((hit) => hit.id)
+          .toList();
+      if (hits.isEmpty) return const <TimelineRow>[];
+      final entryList = await (select(entries)
+            ..where((e) => e.id.isIn(hits))
+            ..orderBy([(e) => OrderingTerm.desc(e.entryDate)]))
           .get();
-      final notebookRows = await select(notebooks).get();
-
-      final firstAssetByEntry = <int, Asset>{};
-      for (final a in assetRows) {
-        final eid = a.entryId;
-        if (eid != null) firstAssetByEntry.putIfAbsent(eid, () => a);
-      }
-      final notebookById = {for (final n in notebookRows) n.id: n};
-
-      return [
-        for (final e in entryList)
-          TimelineRow(
-            entry: e,
-            firstAsset: firstAssetByEntry[e.id],
-            notebook: e.notebookId == null ? null : notebookById[e.notebookId!],
-          ),
-      ];
+      return _rowsFor(entryList);
     });
   }
 

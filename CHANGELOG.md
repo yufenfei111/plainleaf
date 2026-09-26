@@ -177,7 +177,36 @@
   **覆盖范围有限**：能抓编译/类型错误，抓不到 lint；环境恢复后请以 `flutter analyze` 为准
 
 - 测试：新增 test/w11_{timeline,startup,study,editor,gallery}_test.dart 共 22 例
-  ⚠️ **全部未经执行** —— 本机会话无法派生子进程；请在正常环境按 `docs/verification-w11.md` 第六节补跑
+  ✅ 已于 2026-09-25 实跑通过（132 例全套绿），并据此修掉 2 个 P0（编辑器退出崩溃、
+  相册碎图格子点不动）—— 详见 `docs/verification-w11.md` §六点五
+
+### Added（阶段 3 · W12 回忆沉淀第一期，2026-09-25）
+
+**信息架构**
+- 底部 Tab 5 → 4：时间轴 / 相册 / 学习 / 我的。「笔记本」本质是记录的一个维度，
+  不是并列的一级目的地，入口收进「我的」；`/notebooks` 从 shell branch 提升为顶层路由
+- 时间轴工具栏新增日历回顾入口 → `/calendar`（按天回看是时间轴的另一种视图，不占 Tab）
+
+**日历与回忆**
+- 新增 feature `calendar`：当月网格 + 每日记录数密度分级、左右切月、点某天列出当天记录并可进详情
+- 时间轴顶部新增「那年今日」：往年同月同日最多 3 条；无数据时塌成 0 尺寸不留白；
+  加载态是与真实卡片同形的静态骨架（不转圈、不呼吸）
+- `EntriesDao` 新增 `watchEntryDates(from,to)` / `watchOnThisDay(today)`（手写 Drift DSL，无代码生成）：
+  日历只取 id+日期；聚合与月日匹配放在 Dart 层，不写 SQLite 日期函数（跨 engine 行为一致）
+
+**动效**（W11 遗留 #3）
+- 时间轴卡片增删动效：180ms 一次性过渡、退场带高度收起；行加稳定 key +
+  `findChildIndexCallback`；只有「本次真正新插入」的条目播入场（id 集合差集判定）
+
+**修复**
+- 两个 FAB 共用默认 Hero tag（`IndexedStack` 下多 branch 的 Scaffold 同时存在）→
+  切到「我的」抛 `multiple heroes share the same tag`（P0，实跑 smoke_test 才暴露）
+- 待办撤销提示挂在 `onDismissed` 上，而软删在 `confirmDismiss` 里就已写库 →
+  行先被流摘掉、widget 卸载，回调永不触发，「撤销」入口永远不出现（P0）
+- 撤销回调闭包捕获 build 期的 `context`/`ref`，此时行已卸载 → 撤销静默失效（P0）
+- `SizeTransition.axisAlignment` 弃用、顶层悬空 `///` doc comment（CI `--fatal-infos` 口径）
+
+- 测试：新增 test/w12_{calendar,onthisday,study}_test.dart 共 28 例，**本机实跑 132/132 通过**
 
 ## [0.1.0] - unreleased
 

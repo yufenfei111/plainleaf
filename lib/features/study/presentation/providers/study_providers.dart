@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/providers.dart';
 import '../../data/todo_repository_impl.dart';
+import '../../domain/daily_completion.dart';
 import '../../domain/entities/study_todo.dart';
 import '../../domain/repositories/todo_repository.dart';
 
@@ -14,6 +15,20 @@ final todoRepositoryProvider = Provider<TodoRepository>((ref) {
 /// 待办数据流（页面 .when 消费三态）
 final todosStreamProvider = StreamProvider<List<StudyTodo>>((ref) {
   return ref.watch(todoRepositoryProvider).watchTodos();
+});
+
+/// 今日完成概况（W12）
+///
+/// 为什么放在 Provider 而不是页面里现算：统计口径（哪条算今天）属于领域逻辑，
+/// 收在 [dailyCompletion] 一处后，文案与进度条共用同一个数字，
+/// 不会演化出「写 1/2 却画 60%」的两套算法。
+///
+/// 已知取舍：[DateTime.now] 只在流下发时取一次，App 一直开着跨过午夜不会自动
+/// 重算——下一次待办变动就会刷新。为此起一个定时器属于过度设计，先不做。
+final todayStatsProvider = Provider<DailyStats>((ref) {
+  final todos = ref.watch(todosStreamProvider).valueOrNull;
+  if (todos == null) return DailyStats.empty; // loading / error 时降级为空盘子
+  return dailyCompletion(todos, DateTime.now());
 });
 
 /// 「已完成」段落是否展开（W11）

@@ -175,6 +175,63 @@ ProcessException: … Command: git --version
 
 ---
 
+## 六点五、补验结果（2026-09-24）—— §5.5 的 #1 #2 就此关闭
+
+### 环境根因（推翻 §1 的结论）
+
+§1 把「跑不了测试」归因为本机资源枯竭，**这个归因是错的**。真实原因是：
+
+> **命令执行环境本身禁止被执行的进程再派生子进程**——任何 dart / node 进程只要
+> `Process.start`，`CreateFile` 建命名管道就返回 `ERROR_PIPE_BUSY(231)`。
+> bash 直接派生 git 没事，但从工具里起来的 dart / node 派生就一定失败。
+
+最小复现只要几行 Dart：
+
+```dart
+import 'dart:io';
+void main() { print(Process.runSync('git', ['--version']).stdout); }  // 必崩
+```
+
+**绕过方式**：Windows 计划任务由 services.exe 派生，不在这个受限的执行上下文里。
+
+```powershell
+$action = New-ScheduledTaskAction -Execute "<项目>\run_all.bat"
+Register-ScheduledTask -TaskName plainleaf_all -Action $action -Force
+Start-ScheduledTask -TaskName plainleaf_all     # 结果写进 test_all.txt，轮询即可
+```
+
+（附带收获：清理掉一个 9/23 17:58 挂起至今的 `flutter test` 孤儿 dart.exe，
+它一直占着管道的 instance 配额。）
+
+### 补验结果
+
+| 项 | 结果 |
+|---|---|
+| `flutter test` | ✅ **104/104 All tests passed**（含 W11 新增 22 例，全部首次实跑通过） |
+| `dart analyze --fatal-infos lib test` | ✅ **No issues found**（CI 口径，比本地默认级别更严） |
+
+### 顺带修掉的三个真缺陷（静态走查抓不到的那类）
+
+1. **编辑器退出崩溃（P0，真机必现）**
+   `_repo` 声明成 `late final` + 惰性取值，`dispose()` 里冲刷最后一次保存时 `ref` 已失效，
+   抛 `StateError: Cannot use "ref" after the widget was disposed`。
+   改为在 `initState` 里 eager 取到实例。**被 `w11_editor_test` ⑤ 抓住。**
+2. **相册格子点不动（P0，真机可复现）**
+   `Image.file` 加载失败时自身尺寸塌成 0×0，`GestureDetector` 默认的 `deferToChild`
+   会让整格丢失命中——碎图或加载未完成时用户点了完全没反应。
+   格子改由 `SizedBox` 定尺寸，并按 `opaque` 参与命中测试。**被 `w11_gallery_test` ③ 抓住。**
+3. **看图页用例时序不足**（非产品缺陷）
+   push 是在 tap 的**下一帧**才 install，单次 `pump(300ms)` 拿不到已挂载的看图页；
+   改成 100ms + 300ms 两次推进。
+
+另清理了一处 `use_null_aware_elements` info lint（`viewerImageStages`）——CI 口径
+`--fatal-infos` 会把它当失败。
+
+> 教训：**「静态分析过了」远不等于「用例过了」**。上一轮 22 条用例没实跑，
+> 就漏掉两个 P0，且两个都只有真跑 Widget 测试才暴露（生命周期 + 时序）。
+
+---
+
 ## 六、验证步骤（拿到正常环境后按这个跑）
 
 ```bash
