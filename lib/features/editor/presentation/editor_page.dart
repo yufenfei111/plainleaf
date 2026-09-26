@@ -10,11 +10,15 @@ import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as p;
 
 import '../../../app/providers.dart';
+import '../../../core/errors/app_exception.dart';
+import '../../../core/media/asset_kind.dart';
+import '../../../core/media/attachment_picker.dart';
 import '../../../shared/widgets/debouncer.dart';
 import '../../notebooks/presentation/providers/notebooks_providers.dart';
 import '../../timeline/domain/entities/timeline_entry.dart';
 import '../../timeline/domain/repositories/timeline_repository.dart';
 import '../../timeline/presentation/providers/timeline_providers.dart';
+import 'providers/editor_providers.dart';
 
 /// 记录编辑器（W3 记录内核，issue #4/#5；W10 补齐分类属性与图片修复）
 /// 路由：/editor（新建）或 /editor?id=N（编辑已有记录）
@@ -92,7 +96,7 @@ class _EditorPageState extends ConsumerState<EditorPage> {
   late TimelineRepository _repo;
 
   final _picker = ImagePicker();
-  List<_AttachedImage> _images = const [];
+  List<_AttachedAsset> _attachments = const [];
 
   int? _id;
   String _status = 'draft';
@@ -150,7 +154,7 @@ class _EditorPageState extends ConsumerState<EditorPage> {
       _notebookId = row.notebookId;
       _mood = row.mood;
       _savedMetaSignature = _metaSignature();
-      await _loadImages(row.id);
+      await _loadAttachments(row.id);
     } else {
       // 新建：先落一条草稿拿 id（保证防抖更新始终有稳定主键）
       _controller = QuillController.basic();
@@ -177,17 +181,21 @@ class _EditorPageState extends ConsumerState<EditorPage> {
     }
   }
 
-  Future<void> _loadImages(int entryId) async {
-    final list = await ref.read(dbProvider).assetsDao.byEntry(entryId);
+  /// 回读附件列表 —— **不限类型**（W17 起附件条要显示图片之外的文件）
+  Future<void> _loadAttachments(int entryId) async {
+    final list = await ref.read(dbProvider).assetsDao.allByEntry(entryId);
     if (!mounted) return;
     setState(() {
-      _images = [
+      _attachments = [
         for (final a in list)
-          _AttachedImage(
+          _AttachedAsset(
             assetId: a.id,
             relPath: a.relPath,
+            kind: AssetKind.fromStorage(a.kind),
             thumbPath: a.thumbPath,
             mediumPath: a.mediumPath,
+            originalName: a.originalName,
+            sizeBytes: a.sizeBytes,
           ),
       ];
     });
@@ -207,20 +215,59 @@ class _EditorPageState extends ConsumerState<EditorPage> {
           .read(timelineRepositoryProvider)
           .attachImage(_id!, xFile.path);
       if (!mounted) return;
-      await _loadImages(_id!);
+      await _loadAttachments(_id!);
     } on Exception catch (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('图片挂接失败：$error')),
-        );
-      }
+      if (mounted) _toast('图片挂接失败：$error');
     }
   }
 
-  Future<void> _detachImage(_AttachedImage img) async {
-    await ref.read(dbProvider).assetsDao.softDelete(img.assetId);
+  /// 选任意类型的本机文件 → 原样挂接（W17 多格式）
+  ///
+  /// 与选图**分开**是刻意的：选图仍走 `image_picker`（带 imageQuality 压缩、
+  /// 直接对接系统相册），而"选文件"要的是原样导入 —— 不压缩、不改格式。
+  Future<void> _pickAndAttachFile() async {
+    if (_id == null) return;
+    final PickedAttachment? picked;
+    try {
+      picked = await ref.read(attachmentPickerProvider).pickFile();
+    } on PickerException catch (error) {
+      if (mounted) _toast(error.message);
+      return;
+    }
+    // 用户取消是正常操作，不提示、不落库
+    if (picked == null) return;
+    try {
+      await ref.read(timelineRepositoryProvider).attachFile(_id!, picked.path);
+      if (!mounted) return;
+      await _loadAttachments(_id!);
+    } on Exception catch (error) {
+      if (mounted) _toast('文件挂接失败：$error');
+    }
+  }
+
+  /// 打开附件（W17 P0-6）：图片走内置全屏，其余交给系统应用。
+  Future<void> _openAttachment(_AttachedAsset asset, String root) async {
+    if (asset.hasBitmap) {
+      _openFullscreen(context, asset, root);
+      return;
+    }
+    try {
+      await ref.read(fileOpenerProvider).open(p.join(root, asset.relPath));
+    } on Exception catch (error) {
+      if (mounted) _toast('$error');
+    }
+  }
+
+  void _toast(String message) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _detach(_AttachedAsset asset) async {
+    await ref.read(dbProvider).assetsDao.softDelete(asset.assetId);
     if (!mounted) return;
-    setState(() => _images = _images.where((i) => i != img).toList());
+    setState(
+        () => _attachments = _attachments.where((a) => a != asset).toList());
   }
 
   /// Delta → 控制器；解析不出实质内容时用 [fallbackText] 回填。
@@ -506,11 +553,13 @@ class _EditorPageState extends ConsumerState<EditorPage> {
               ),
             ),
             const Divider(height: 1),
-            _ImageStrip(
-              images: _images,
+            _AttachmentStrip(
+              assets: _attachments,
               root: root,
-              onPick: _pickAndAttach,
-              onRemove: _detachImage,
+              onPickImage: _pickAndAttach,
+              onPickFile: _pickAndAttachFile,
+              onOpen: _openAttachment,
+              onRemove: _detach,
             ),
             const Divider(height: 1),
             Expanded(
@@ -718,41 +767,68 @@ class _MenuChip<T> extends StatelessWidget {
   }
 }
 
-/// 编辑器附件条上的图片视图
-class _AttachedImage {
-  const _AttachedImage({
+/// 编辑器附件条上的一个附件（W17 起不限类型，不再只有图片）
+class _AttachedAsset {
+  const _AttachedAsset({
     required this.assetId,
     required this.relPath,
+    required this.kind,
     this.thumbPath,
     this.mediumPath,
+    this.originalName,
+    this.sizeBytes,
   });
 
   final int assetId;
 
-  /// 原图相对路径（以 App 支持目录为基准）
+  /// 原文件相对路径（以 App 支持目录为基准）
   final String relPath;
 
-  /// 缩略图相对路径（长边 400）；为空说明还没转码，回退原图但限制解码尺寸
+  /// 附件类型，决定怎么渲染：图片给缩略图，其余给类型图标
+  final AssetKind kind;
+
+  /// 缩略图相对路径（长边 400）。为空有两种含义：图片尚未转码，或本类型
+  /// 本就不生成缩略图（非图片）—— 后者是常态，UI 必须自带图标兜底。
   final String? thumbPath;
 
-  /// 中号图相对路径（长边 1600）；全屏查看的首选来源
+  /// 中号图相对路径（长边 1600）；全屏查看的首选来源（仅图片有意义）
   final String? mediumPath;
+
+  /// 原始文件名。落盘名是 uuid，**非图片文件必须显示它**，否则只剩一串 uuid
+  final String? originalName;
+
+  /// 文件大小（字节）；取不到为 null
+  final int? sizeBytes;
+
+  /// 是否可以显示位图（只有图片有缩略图/原图可显示）
+  bool get hasBitmap => kind == AssetKind.image;
+
+  /// 列表上显示的名字：优先原名，回退到落盘文件名
+  String get displayName => originalName ?? p.basename(relPath);
 }
 
-/// 图片附件条（W4 附件条模式，issue #7；quill 内嵌混排按深坑预案延后，W6 统一缩略图管线）
-class _ImageStrip extends StatelessWidget {
-  const _ImageStrip({
-    required this.images,
-    required this.onPick,
+/// 附件条（W4 附件条模式，issue #7；W17 起不限类型）
+///
+/// 左侧三个入口：拍照 / 相册选图 / **选择文件**。
+/// 前两个走 `image_picker`（带压缩、直接对接系统相册），第三个走文件选择器
+/// 原样导入 —— 语义不同，不合并成一个按钮。
+class _AttachmentStrip extends StatelessWidget {
+  const _AttachmentStrip({
+    required this.assets,
+    required this.onPickImage,
+    required this.onPickFile,
+    required this.onOpen,
     required this.onRemove,
     this.root,
   });
 
-  final List<_AttachedImage> images;
-  final Future<void> Function(ImageSource source) onPick;
-  final Future<void> Function(_AttachedImage image) onRemove;
+  final List<_AttachedAsset> assets;
+  final Future<void> Function(ImageSource source) onPickImage;
+  final Future<void> Function() onPickFile;
+  final Future<void> Function(_AttachedAsset asset, String root) onOpen;
+  final Future<void> Function(_AttachedAsset asset) onRemove;
 
-  /// App 支持目录（相对路径的解析基准）；null 时图片位显示占位
+  /// App 支持目录（相对路径的解析基准）；null 时格子只显示占位
   final String? root;
 
   @override
@@ -764,32 +840,41 @@ class _ImageStrip extends StatelessWidget {
           IconButton(
             tooltip: '拍照',
             icon: const Icon(Icons.photo_camera_outlined),
-            onPressed: () => onPick(ImageSource.camera),
+            onPressed: () => onPickImage(ImageSource.camera),
           ),
           IconButton(
             tooltip: '相册选图',
             icon: const Icon(Icons.photo_library_outlined),
-            onPressed: () => onPick(ImageSource.gallery),
+            onPressed: () => onPickImage(ImageSource.gallery),
+          ),
+          IconButton(
+            tooltip: '选择文件（任意类型）',
+            icon: const Icon(Icons.attach_file),
+            onPressed: () => onPickFile(),
           ),
           Expanded(
             child: ListView(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(vertical: 8),
               children: [
-                for (final img in images)
+                for (final asset in assets)
                   Padding(
                     padding: const EdgeInsets.only(right: 8),
                     child: Stack(
                       children: [
                         ClipRRect(
                           borderRadius: BorderRadius.circular(10),
-                          child: _ImageTile(image: img, root: root),
+                          child: _AttachmentTile(
+                            asset: asset,
+                            root: root,
+                            onOpen: onOpen,
+                          ),
                         ),
                         Positioned(
                           right: 0,
                           top: 0,
                           child: GestureDetector(
-                            onTap: () => onRemove(img),
+                            onTap: () => onRemove(asset),
                             child: Container(
                               decoration: const BoxDecoration(
                                 color: Colors.black54,
@@ -816,17 +901,26 @@ class _ImageStrip extends StatelessWidget {
   }
 }
 
-/// 附件图缩略图（W10 修复）
+/// 附件格子（W17 起按类型分派）
 ///
-/// 两处必须同时做到，缺一个就会「要么破图、要么卡」：
-/// 1. 相对路径要拼上支持目录——库里存的是 `media/yyyy/mm/xxx.jpg`，
-///    直接 Image.file 必然 FileNotFound，表现为全部破图；
-/// 2. 优先 thumb 且限制 cacheWidth——72dp 的格子里解码 4000px 原图，
-///    单张就吃掉几十 MB 解码内存，多图时会明显的卡顿与内存尖峰。
-class _ImageTile extends StatelessWidget {
-  const _ImageTile({required this.image, this.root});
+/// **图片**走原来的缩略图路径。两处必须同时做到，缺一个就会「要么破图、要么卡」：
+///   ① 相对路径要拼上支持目录 —— 库里存的是 `media/yyyy/mm/xxx.jpg`，
+///      直接 `Image.file` 必然 FileNotFound，表现为全部破图；
+///   ② 优先 thumb 且限制 `cacheWidth` —— 72dp 的格子里解码 4000px 原图，
+///      单张就吃掉几十 MB 解码内存，多图时会明显卡顿。
+///
+/// **其他类型**给类型图标 + 扩展名。注意**不要试图用 Image.file 渲染 PDF**，
+/// 那只会得到一堆破图占位，比直接显示图标更糟。
+/// 图片"刚挂上还没转码"时也落到图标分支，正好充当转码前的占位。
+class _AttachmentTile extends StatelessWidget {
+  const _AttachmentTile({
+    required this.asset,
+    required this.onOpen,
+    this.root,
+  });
 
-  final _AttachedImage image;
+  final _AttachedAsset asset;
+  final Future<void> Function(_AttachedAsset asset, String root) onOpen;
   final String? root;
 
   static const double size = 72;
@@ -834,28 +928,75 @@ class _ImageTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final base = root;
-    if (base == null) {
-      return const SizedBox(width: size, height: size);
-    }
-    final dpr = MediaQuery.devicePixelRatioOf(context);
+    final scheme = Theme.of(context).colorScheme;
+    final bitmapRel = asset.thumbPath ?? asset.relPath;
+    final canShowBitmap =
+        base != null && asset.hasBitmap && bitmapRel.isNotEmpty;
+
     return GestureDetector(
-      // 长按看大图：格子只有 72dp，截图/文档类图片在这里根本看不清内容。
-      // 不做缩放手势——全屏浏览由相册那边负责，这里只解决「看不清」。
-      onLongPress: () => _openFullscreen(context, image, base),
-      child: Image.file(
-        File(p.join(base, image.thumbPath ?? image.relPath)),
-        width: size,
-        height: size,
-        fit: BoxFit.cover,
-        cacheWidth: (size * dpr).round(),
-        errorBuilder: (context, error, stackTrace) => const SizedBox(
-          width: size,
-          height: size,
-          child: Icon(Icons.broken_image_outlined),
-        ),
+      // 点开：图片进内置全屏，其余交给系统应用（见 EditorPage._openAttachment）
+      onTap: base == null ? null : () => onOpen(asset, base),
+      child: canShowBitmap
+          ? Image.file(
+              File(p.join(base, bitmapRel)),
+              width: size,
+              height: size,
+              fit: BoxFit.cover,
+              cacheWidth:
+                  (size * MediaQuery.devicePixelRatioOf(context)).round(),
+              errorBuilder: (context, error, stackTrace) =>
+                  _FileBadge(asset: asset, scheme: scheme),
+            )
+          : _FileBadge(asset: asset, scheme: scheme),
+    );
+  }
+}
+
+/// 非图片附件（以及尚未转码的图片）的格子：类型图标 + 扩展名
+///
+/// 这里显示扩展名而不是完整文件名：72dp 放不下「作业第三章.pdf」，
+/// 截断成半截名字反而更难看。完整名字留给点开后的动作与详情页。
+class _FileBadge extends StatelessWidget {
+  const _FileBadge({required this.asset, required this.scheme});
+
+  final _AttachedAsset asset;
+  final ColorScheme scheme;
+
+  @override
+  Widget build(BuildContext context) {
+    final ext = p.extension(asset.relPath).replaceFirst('.', '').toUpperCase();
+    return Container(
+      width: _AttachmentTile.size,
+      height: _AttachmentTile.size,
+      color: scheme.surfaceContainerHighest,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(_iconFor(asset.kind), size: 24, color: scheme.onSurfaceVariant),
+          const SizedBox(height: 4),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Text(
+              ext.isEmpty ? '文件' : ext,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 10, color: scheme.onSurfaceVariant),
+            ),
+          ),
+        ],
       ),
     );
   }
+
+  static IconData _iconFor(AssetKind kind) => switch (kind) {
+        AssetKind.image => Icons.image_outlined,
+        AssetKind.video => Icons.movie_outlined,
+        AssetKind.audio => Icons.audiotrack_outlined,
+        AssetKind.pdf => Icons.picture_as_pdf_outlined,
+        AssetKind.document => Icons.description_outlined,
+        AssetKind.archive => Icons.folder_zip_outlined,
+        AssetKind.other => Icons.insert_drive_file_outlined,
+      };
 }
 
 /// 全屏看大图：medium 优先 + 按屏幕宽×DPR 限制 cacheWidth（与详情页同一口径）。
@@ -864,7 +1005,7 @@ class _ImageTile extends StatelessWidget {
 /// 收尾统一用对话框自己的 context（页面级 context.pop() 会把整页弹掉）。
 void _openFullscreen(
   BuildContext context,
-  _AttachedImage image,
+  _AttachedAsset asset,
   String root,
 ) {
   final cacheWidth = fullscreenCacheWidth(
@@ -881,7 +1022,7 @@ void _openFullscreen(
           children: [
             Positioned.fill(
               child: Image.file(
-                File(p.join(root, viewerRelPath(image.relPath, image.mediumPath))),
+                File(p.join(root, viewerRelPath(asset.relPath, asset.mediumPath))),
                 cacheWidth: cacheWidth,
                 fit: BoxFit.contain,
                 errorBuilder: (_, _, _) => Center(

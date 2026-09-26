@@ -66,6 +66,7 @@ run_test.bat
 run_icons.bat
 run_release.bat
 run_codegen.bat
+run_pubget.bat
 test_all.txt
 test_out.txt
 test_targets.txt
@@ -73,6 +74,7 @@ build_out.txt
 icons_out.txt
 release_out.txt
 codegen_out.txt
+pubget_out.txt
 
 # release 构建目录用的代理端口（只有一个端口号，随会话变化）
 proxy_port.txt

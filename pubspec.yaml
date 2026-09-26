@@ -61,6 +61,19 @@ dependencies:
   # 见 lib/core/media/image_saver.dart —— 桌面没有"系统相册"这个概念。
   gal: ^2.3.0
 
+  # W17 多格式附件：从本机选任意类型的文件挂到记录上。
+  # 平台通道依赖 —— 本机 flutter test 覆盖不到，必须真机走查（见 W14 的教训）。
+  #
+  # ⚠️ 版本锁在 11.x，不要随手升到 13.x：file_picker 13 依赖 windows_file_picker 2
+  # → win32 ^6.3，而 flutter_secure_storage 9.2 链上锁的是 win32 ^5.0，两者冲突。
+  # 优先级判断：flutter_secure_storage 承担 W14 的凭据与密钥存储（安全关键路径，
+  # 已通过 173 项验证），**不动它**；file_picker 11.x 的选文件能力完全够用。
+  # 将来若要统一升级，必须连带重跑 W14 的全部安全用例与真机走查。
+  file_picker: ^11.0.3
+  # W17：非内置预览的类型（文档/压缩包/未知格式）交给系统应用打开。
+  # 同样走平台通道，必须真机验证。
+  open_filex: ^4.7.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -120,6 +120,18 @@ class AssetsDao extends DatabaseAccessor<PlainLeafDatabase>
         .get();
   }
 
+  /// 条目下的**全部**资产，不限类型（W17 多格式）
+  ///
+  /// 与 [byEntry] 并存而不是替换它：相册 / 详情页 / firstImagePath 这些
+  /// 语义上就是"只看图片"的地方继续用 [byEntry]，改动面最小；
+  /// 编辑器的附件条需要显示任意类型，用这个方法。
+  Future<List<Asset>> allByEntry(int entryId) {
+    return (select(assets)
+          ..where((a) => a.entryId.equals(entryId) & a.deleted.equals(false))
+          ..orderBy([(a) => OrderingTerm.asc(a.sortIndex)]))
+        .get();
+  }
+
   /// 软删除单个资产（文件不动；物理清理走回收站策略）
   Future<void> softDelete(int assetId) {
     return transaction(() async {
