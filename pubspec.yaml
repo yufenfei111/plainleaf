@@ -45,6 +45,12 @@ dependencies:
   image: ^4.2.0                  # 解码/缩放/编码与 EXIF 方向烘焙（纯 Dart，在 isolate 内跑）
   crypto: ^3.0.6                 # hash_sha256（§4.3 修正 ①，资产去重与完整性校验）
 
+  # W14 安全与导出（§三 阶段 4）：AES-GCM 加密选项 + 应用锁 + Markdown/PDF 导出
+  cryptography: ^2.7.0           # AES-256-GCM / PBKDF2-HMAC-SHA256 / HKDF（纯 Dart，无平台通道）
+  flutter_secure_storage: ^9.2.0 # §4.3：密钥必须入系统安全容器，不进 shared_preferences/代码
+  local_auth: ^2.3.0             # 应用锁的生物识别快速解锁（不可用时不阻塞，降级到密码）
+  pdf: ^3.11.0                   # PDF 导出（纯 Dart 生成，不依赖打印服务）
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

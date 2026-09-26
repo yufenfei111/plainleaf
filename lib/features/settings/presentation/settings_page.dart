@@ -9,9 +9,12 @@ import '../../../app/providers.dart';
 import '../../../app/theme.dart';
 import '../../../core/exporter/backup_service.dart';
 import '../../../core/exporter/markdown_exporter.dart';
+import '../../../core/exporter/pdf_exporter.dart';
+import '../../../core/errors/app_exception.dart';
 import '../../../core/sync/webdav_client.dart';
 import '../../../core/sync/webdav_config.dart';
 import '../../timeline/presentation/providers/timeline_providers.dart';
+import 'providers/security_providers.dart';
 import 'providers/webdav_providers.dart';
 
 /// 我的 Tab（W5：备份与导出真实功能上线；W13 云备份（WebDAV 单向）已上线；
@@ -48,6 +51,12 @@ class SettingsPage extends ConsumerWidget {
             onTap: () => _exportMarkdown(context, ref),
           ),
           ListTile(
+            leading: const Icon(Icons.picture_as_pdf_outlined),
+            title: const Text('导出全部记录（PDF）'),
+            subtitle: const Text('每篇独立分页排版，需要系统里有中文字体'),
+            onTap: () => _exportPdf(context, ref),
+          ),
+          ListTile(
             leading: const Icon(Icons.file_download_outlined),
             title: const Text('导入 Markdown（.md）'),
             subtitle: const Text('把外部 Markdown 文本转成记录'),
@@ -68,12 +77,7 @@ class SettingsPage extends ConsumerWidget {
           ),
           const Divider(),
           _cloudBackupCard(context, ref),
-          ListTile(
-            leading: const Icon(Icons.lock_outline),
-            title: const Text('应用锁'),
-            subtitle: const Text('W14 上线'),
-            enabled: false,
-          ),
+          _appLockTile(context, ref),
           ListTile(
             leading: const Icon(Icons.info_outline),
             title: const Text('关于素页'),
@@ -355,6 +359,180 @@ class SettingsPage extends ConsumerWidget {
     );
   }
 
+  /// 应用锁入口（W14）
+  ///
+  /// 副标题随状态切换成"它会怎么影响我"，而不是一句万能的"已开启/已关闭"——
+  /// 用户看到这个开关时想知道的从来不是开关本身，而是"开了以后我什么时候要输密码"。
+  Widget _appLockTile(BuildContext context, WidgetRef ref) {
+    final enabled = ref.watch(appLockEnabledProvider).valueOrNull ?? false;
+    return ListTile(
+      leading: Icon(enabled ? Icons.lock_outline : Icons.lock_open_outlined),
+      title: const Text('应用锁'),
+      subtitle: Text(enabled
+          ? '已开启：下次打开或切回素页时需要密码'
+          : '开启后打开素页要输密码（锁的是入口，不是数据库本身）'),
+      onTap: () => enabled
+          ? _manageAppLock(context, ref)
+          : _enableAppLock(context, ref),
+    );
+  }
+
+  Future<void> _enableAppLock(BuildContext context, WidgetRef ref) async {
+    final password = await _showPasswordDialog(
+      context,
+      title: '开启应用锁',
+      hint: '密码请自己记牢，忘了只能清空数据重装',
+      requireConfirm: true,
+    );
+    if (password == null || !context.mounted) return;
+    try {
+      await ref.read(appLockActionsProvider).setPassword(password);
+      if (!context.mounted) return;
+      _snack(context, '应用锁已开启，下次打开需要密码');
+    } on SecurityException catch (error) {
+      if (!context.mounted) return;
+      // 安全容器写不进去时必须出声：否则用户以为设上了，下次启动却压根没锁
+      _snack(context, error.userMessage);
+    }
+  }
+
+  Future<void> _manageAppLock(BuildContext context, WidgetRef ref) async {
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => SimpleDialog(
+        title: const Text('应用锁'),
+        children: [
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(dialogContext, 'change'),
+            child: const Text('修改密码'),
+          ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(dialogContext, 'clear'),
+            child: const Text('关闭应用锁'),
+          ),
+        ],
+      ),
+    );
+    if (choice == null || !context.mounted) return;
+
+    if (choice == 'clear') {
+      await ref.read(appLockActionsProvider).clear();
+      if (!context.mounted) return;
+      _snack(context, '应用锁已关闭');
+      return;
+    }
+    final oldPassword = await _showPasswordDialog(
+      context,
+      title: '当前密码',
+      requireConfirm: false,
+    );
+    if (oldPassword == null || !context.mounted) return;
+    final newPassword = await _showPasswordDialog(
+      context,
+      title: '新密码',
+      requireConfirm: true,
+    );
+    if (newPassword == null || !context.mounted) return;
+
+    final ok = await ref
+        .read(appLockActionsProvider)
+        .changePassword(oldPassword, newPassword);
+    if (!context.mounted) return;
+    _snack(context, ok ? '密码已修改' : '当前密码不正确，未做任何改动');
+  }
+
+  /// 通用密码对话框。返回 null 表示用户取消。
+  ///
+  /// [requireConfirm] 为真时要求输入两次并校验一致——**设置**密码必须有这一步，
+  /// 因为密码是"一次性生效且没有找回通道"的操作，输错一个字符就再也进不去。
+  Future<String?> _showPasswordDialog(
+    BuildContext context, {
+    required String title,
+    String? hint,
+    bool requireConfirm = false,
+  }) async {
+    final first = TextEditingController();
+    final second = TextEditingController();
+    String? error;
+    try {
+      return await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (dialogContext, setDialogState) => AlertDialog(
+            title: Text(title),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    key: const Key('password-input'),
+                    controller: first,
+                    obscureText: true,
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      labelText: '密码',
+                      hintText: hint,
+                    ),
+                  ),
+                  if (requireConfirm) ...[
+                    const SizedBox(height: 12),
+                    TextField(
+                      key: const Key('password-confirm'),
+                      controller: second,
+                      obscureText: true,
+                      decoration: const InputDecoration(labelText: '再次输入'),
+                    ),
+                  ],
+                  if (error != null) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      error!,
+                      key: const Key('password-error'),
+                      style: TextStyle(
+                        color: Theme.of(dialogContext).colorScheme.error,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('取消'),
+              ),
+              TextButton(
+                onPressed: () {
+                  final value = first.text;
+                  if (value.isEmpty) {
+                    setDialogState(() => error = '密码不能为空');
+                    return;
+                  }
+                  if (requireConfirm && value != second.text) {
+                    setDialogState(() => error = '两次输入的密码不一致');
+                    return;
+                  }
+                  Navigator.pop(dialogContext, value);
+                },
+                child: const Text('确定'),
+              ),
+            ],
+          ),
+        ),
+      );
+    } finally {
+      // 对话框关闭后控制器就没用了，必须释放
+      first.dispose();
+      second.dispose();
+    }
+  }
+
+  void _snack(BuildContext context, String text) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(text), duration: const Duration(seconds: 3)),
+    );
+  }
+
   /// 填写/修改 WebDAV 配置。
   /// 对话框一律用**它自己的 context 收尾**——用页面级 context.pop() 会把整页弹掉。
   Future<void> _editWebDavConfig(
@@ -508,7 +686,21 @@ class SettingsPage extends ConsumerWidget {
     );
     if (confirmed != true || !context.mounted) return;
 
-    final file = await ref.read(cloudBackupActionsProvider).restore(config, picked);
+    final actions = ref.read(cloudBackupActionsProvider);
+    var file = await actions.restore(config, picked);
+    if (file == null &&
+        actions.lastSecurityError == SecurityErrorKind.passwordRequired) {
+      // 云端这份是加密包。第一次故意不带密码去"探"，就为了走到这里：
+      // 代价是一次失败，换来的是不必为了知道它加没加密而先把整个包下载一遍。
+      if (!context.mounted) return;
+      final password = await _showPasswordDialog(
+        context,
+        title: '这份云端备份已加密',
+        requireConfirm: false,
+      );
+      if (password == null || !context.mounted) return;
+      file = await actions.restore(config, picked, password: password);
+    }
     if (!context.mounted) return;
     if (file == null) {
       messenger.showSnackBar(
@@ -538,17 +730,117 @@ class SettingsPage extends ConsumerWidget {
     return when == null ? size : '${_formatTime(when)} · $size';
   }
 
+  /// 导出前先问一句"要不要加密"。
+  /// 返回 null = 取消；空串 = 不加密；非空 = 加密口令。
+  ///
+  /// **为什么每次导出都问一遍，而不是在设置里放一个记得住的默认开关**：
+  /// 加密备份最怕的不是麻烦，是"用户以为自己加密了、其实没有"。把选择摆在
+  /// 每一次导出动作之前，比藏在设置深处改一次更难搞错。代价是每次多点两下，
+  /// 相比"包落到别人手里"，这点代价很便宜。
+  Future<String?> _askBackupEncryption(BuildContext context) async {
+    final first = TextEditingController();
+    final second = TextEditingController();
+    var wantEncryption = false;
+    String? error;
+    try {
+      return await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (dialogContext, setDialogState) => AlertDialog(
+            title: const Text('导出备份包'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SwitchListTile(
+                    key: const Key('backup-encrypt-switch'),
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('用密码加密'),
+                    subtitle: const Text('没有这个密码谁也打不开它，包括你自己'),
+                    value: wantEncryption,
+                    onChanged: (value) =>
+                        setDialogState(() {
+                      wantEncryption = value;
+                      error = null;
+                    }),
+                  ),
+                  if (wantEncryption) ...[
+                    TextField(
+                      controller: first,
+                      obscureText: true,
+                      decoration: const InputDecoration(labelText: '密码'),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: second,
+                      obscureText: true,
+                      decoration: const InputDecoration(labelText: '再次输入'),
+                    ),
+                  ],
+                  if (error != null) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      error!,
+                      key: const Key('backup-encrypt-error'),
+                      style: TextStyle(
+                        color: Theme.of(dialogContext).colorScheme.error,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('取消'),
+              ),
+              TextButton(
+                onPressed: () {
+                  if (!wantEncryption) {
+                    Navigator.pop(dialogContext, '');
+                    return;
+                  }
+                  if (first.text.isEmpty) {
+                    setDialogState(() => error = '加密备份必须填密码');
+                    return;
+                  }
+                  if (first.text != second.text) {
+                    setDialogState(() => error = '两次输入的密码不一致');
+                    return;
+                  }
+                  Navigator.pop(dialogContext, first.text);
+                },
+                child: const Text('导出'),
+              ),
+            ],
+          ),
+        ),
+      );
+    } finally {
+      first.dispose();
+      second.dispose();
+    }
+  }
+
   Future<void> _exportBackup(BuildContext context, WidgetRef ref) async {
+    final password = await _askBackupEncryption(context);
+    if (password == null || !context.mounted) return;
+
     final messenger = ScaffoldMessenger.of(context);
     messenger.showSnackBar(
       const SnackBar(content: Text('正在打包备份…'), duration: Duration(seconds: 2)),
     );
     try {
       final service = BackupService(ref.read(dbProvider));
-      final file = await service.exportBackup();
+      final file = await service.exportBackup(
+        password: password.isEmpty ? null : password,
+      );
       messenger.hideCurrentSnackBar();
       messenger.showSnackBar(SnackBar(
-        content: Text('备份完成：${file.path.split(r'\').last}'),
+        content: Text(password.isEmpty
+            ? '备份完成：${file.path.split(r'\').last}'
+            : '加密备份完成：${file.path.split(r'\').last}（务必记住密码）'),
         duration: const Duration(seconds: 4),
       ));
     } on Exception catch (error) {
@@ -581,12 +873,47 @@ class SettingsPage extends ConsumerWidget {
     }
   }
 
+  /// 导出全部记录为 PDF（W14）
+  ///
+  /// 失败文案必须**可行动**：缺字体就直说"这台设备缺中文字体"，
+  /// 而不是一句"导出失败"——后者让用户不知道该重试、重启，还是这台机子根本不行。
+  Future<void> _exportPdf(BuildContext context, WidgetRef ref) async {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(
+      const SnackBar(content: Text('正在生成 PDF…'), duration: Duration(seconds: 2)),
+    );
+    try {
+      final exporter = PdfExporter(ref.read(dbProvider));
+      final bytes = await exporter.exportAll();
+      final dir = await ref.read(mediaStorageProvider).supportDir();
+      final exportDir = Directory(p.join(dir.path, 'export'));
+      if (!exportDir.existsSync()) exportDir.createSync(recursive: true);
+      final file = File(p.join(exportDir.path, _exportFileName('.pdf')));
+      await file.writeAsBytes(bytes, flush: true);
+
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(SnackBar(
+        content: Text(
+            '已导出 PDF（${_formatSize(bytes.length)}）：${file.path}'),
+        duration: const Duration(seconds: 6),
+      ));
+    } on ExportException catch (error) {
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(
+        SnackBar(content: Text(error.message), duration: const Duration(seconds: 6)),
+      );
+    } on Exception catch (error) {
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(SnackBar(content: Text('PDF 导出失败：$error')));
+    }
+  }
+
   /// 导出文件名：素页导出-20260922-2215.md（避免同名覆盖历史导出）
-  String _exportFileName() {
+  String _exportFileName([String extension = '.md']) {
     final now = DateTime.now();
     String two(int v) => v.toString().padLeft(2, '0');
     return '素页导出-${now.year}${two(now.month)}${two(now.day)}'
-        '-${two(now.hour)}${two(now.minute)}.md';
+        '-${two(now.hour)}${two(now.minute)}$extension';
   }
 
   /// 补齐历史缩略图（W6 遗留 entry：`backfillDerived` 已就绪但此前没有入口，
@@ -622,7 +949,7 @@ class SettingsPage extends ConsumerWidget {
         return;
       }
 
-      final picked = await showModalBottomSheet<File>(
+      final picked = await showModalBottomSheet<BackupFileInfo>(
         context: context,
         builder: (_) => SafeArea(
           child: ListView(
@@ -631,17 +958,32 @@ class SettingsPage extends ConsumerWidget {
               const ListTile(title: Text('选择要恢复的备份包')),
               for (final b in backups)
                 ListTile(
-                  leading: const Icon(Icons.archive_outlined),
+                  leading: Icon(b.encrypted
+                      ? Icons.lock_outline
+                      : Icons.archive_outlined),
                   title: Text(b.fileName),
                   subtitle: Text(
-                      '${_formatTime(b.modifiedAt)} · ${_formatSize(b.sizeBytes)}'),
-                  onTap: () => Navigator.pop(context, b.file),
+                      '${_formatTime(b.modifiedAt)} · ${_formatSize(b.sizeBytes)}'
+                      '${b.encrypted ? ' · 已加密' : ''}'),
+                  onTap: () => Navigator.pop(context, b),
                 ),
             ],
           ),
         ),
       );
       if (picked == null || !context.mounted) return;
+
+      // 加密包先要密码再恢复：已经知道它加密了还让用户猜一次，
+      // 只会换来一句"密码不正确"——那是把成本转嫁给用户。
+      String? password;
+      if (picked.encrypted) {
+        password = await _showPasswordDialog(
+          context,
+          title: '这份备份包已加密',
+          requireConfirm: false,
+        );
+        if (password == null || !context.mounted) return;
+      }
 
       final confirmed = await showDialog<bool>(
         context: context,
@@ -665,7 +1007,7 @@ class SettingsPage extends ConsumerWidget {
       );
       if (confirmed != true || !context.mounted) return;
 
-      await service.restore(picked);
+      await service.restore(picked.file, password: password);
       if (!context.mounted) return;
       await showDialog<void>(
         context: context,
@@ -681,6 +1023,10 @@ class SettingsPage extends ConsumerWidget {
           ],
         ),
       );
+    } on SecurityException catch (error) {
+      // 密码错 / 包被改过：给分级文案，绝不把原始异常串甩给用户
+      messenger.showSnackBar(
+          SnackBar(content: Text('恢复失败：${error.userMessage}')));
     } on Exception catch (error) {
       messenger.showSnackBar(SnackBar(content: Text('恢复失败：$error')));
     }

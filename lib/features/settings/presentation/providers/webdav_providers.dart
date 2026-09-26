@@ -78,9 +78,19 @@ class CloudBackupStatusController extends Notifier<CloudBackupStatus> {
 /// 异常在此转成人话（[NetworkException.userMessage]）并写进状态，
 /// 页面只负责"调用 + 读状态 + 必要的后续弹窗"。
 class CloudBackupActions {
-  const CloudBackupActions(this._ref);
+  // 刻意不是 const 构造：下面有一个可变字段（记录最近一次的安全失败原因）
+  CloudBackupActions(this._ref);
 
   final Ref _ref;
+
+  /// 最近一次云恢复失败的安全原因。
+  ///
+  /// 为什么要额外记一个字段，而不是让 UI 自己去 catch：这里统一把异常转成了
+  /// 用户文案，UI 拿到的是一个壳（状态对象）；可"这份云端备份是加密的"这件事
+  /// 需要 UI **换个动作**——弹密码框再试一次，而不是把文案显示出来就完事。
+  SecurityErrorKind? _lastSecurityError;
+
+  SecurityErrorKind? get lastSecurityError => _lastSecurityError;
 
   CloudBackupService get _service => _ref.read(cloudBackupServiceProvider);
 
@@ -148,21 +158,33 @@ class CloudBackupActions {
   }
 
   /// 从云端恢复；返回被替换的库文件（失败返回 null）
-  Future<File?> restore(WebDavConfig config, WebDavResource remote) async {
+  ///
+  /// 加密包不给密码时先失败一次并不丢面子：web 端拿到"需要密码"的异常后
+  /// UI 会弹框补一次再调一次，比为了少一次往返去额外下载整个包便宜得多。
+  Future<File?> restore(
+    WebDavConfig config,
+    WebDavResource remote, {
+    String? password,
+  }) async {
     _status.working('正在下载并恢复…');
     try {
-      final file = await _service.restore(config, remote);
+      final file = await _service.restore(config, remote, password: password);
+      _lastSecurityError = null;
       _status.success('已从云端恢复，请重启应用');
       return file;
     } on Object catch (error) {
+      _lastSecurityError = error is SecurityException ? error.kind : null;
       _status.failure(_message(error));
       return null;
     }
   }
 
-  /// 异常 → 用户文案。网络异常取分类文案，其余只给一句通用兜底。
+  /// 异常 → 用户文案。
+  /// 网络异常与安全异常都自带分级文案；其余只给一句通用兜底，
+  /// 绝不把含 URL/凭据上下文的原始异常串透出去。
   String _message(Object error) {
     if (error is NetworkException) return error.userMessage;
+    if (error is SecurityException) return error.userMessage;
     return '操作失败，请重试';
   }
 }

@@ -17,6 +17,58 @@ class DatabaseException extends PlainLeafException {
   final Object? cause;
 }
 
+/// 导出失败（W14：PDF 缺中文字体、目标目录不可写等）
+///
+/// 单独建一类而不是复用 FileSystemException：导出的失败基本都源自"这台设备
+/// 缺某个前提条件"，UI 需要把它和用户数据本身的问题区分开来说人话。
+class ExportException extends PlainLeafException {
+  const ExportException(super.message);
+}
+
+/// 安全相关失败的分类（W14 AES-GCM 加密 / 应用锁）
+enum SecurityErrorKind {
+  /// GCM 认证没通过。密码错误、文件被截断、被人改过一个字节，现象完全一致
+  /// （见 [SecurityException.userMessage]）——**不要分开三种文案**。
+  authenticationFailed,
+
+  /// 数据是加密的，但调用方没有给密码。
+  /// 与 authenticationFailed 分开的意义：UI 收到这个才去弹密码框，
+  /// 收到那个则是"你刚输错了"。
+  passwordRequired,
+
+  /// 数据不是素页的加密容器（缺文件头或版本不符）
+  notEncrypted,
+
+  /// 设备安全容器（Keystore / Keychain / DPAPI）不可用。
+  /// 与上面两类分开是因为用户的下一步完全不同：这类要去系统设置，再试密码没用。
+  storage,
+}
+
+/// 安全层异常（W14）
+///
+/// [message] 记日志用；UI 一律展示 [userMessage]，
+/// 且不透出 [cause]（可能带 key 名与平台堆栈）。
+class SecurityException extends PlainLeafException {
+  const SecurityException(
+    super.message, {
+    this.kind = SecurityErrorKind.authenticationFailed,
+    this.cause,
+  });
+
+  final SecurityErrorKind kind;
+
+  /// 原始异常（调试用，不直接展示给用户）。
+  final Object? cause;
+
+  String get userMessage => switch (kind) {
+        SecurityErrorKind.authenticationFailed =>
+          '密码不正确，或者这份数据已被改动过',
+        SecurityErrorKind.passwordRequired => '这份备份包是加密的，请输入密码',
+        SecurityErrorKind.notEncrypted => '这不是素页的加密数据，请确认所选文件',
+        SecurityErrorKind.storage => '设备安全存储不可用，请重启应用后再试',
+      };
+}
+
 /// 网络错误分类（W13 WebDAV 单向备份）
 ///
 /// **为什么要细分而不是合成一句 message**：三类失败用户该做的动作完全不同——
