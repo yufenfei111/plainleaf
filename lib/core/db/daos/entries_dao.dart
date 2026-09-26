@@ -299,6 +299,83 @@ class EntriesDao extends DatabaseAccessor<PlainLeafDatabase>
     });
   }
 
+  /// 按当前筛选条件取**全部**匹配 id（W15 多选）
+  ///
+  /// 为什么不复用 [watchTimeline]：时间轴有 `limit`（分页红线），
+  /// 而「按筛选全选」的语义是"选中当前条件下**全部**记录"。
+  /// 若按已加载的前 100 条来选，用户以为全选了、实际漏掉的是他根本看不见的那部分
+  /// —— 这是最危险的一类静默错误（他可能随后就点了"删除"）。
+  Future<List<int>> selectIdsByFilter({
+    int? notebookId,
+    String? type,
+    bool pinnedOnly = false,
+  }) async {
+    final rows = await (select(entries)
+          ..where((e) {
+            var cond = e.deleted.equals(false) & e.status.equals('normal');
+            if (notebookId != null) {
+              cond = cond & e.notebookId.equals(notebookId);
+            }
+            if (type != null) cond = cond & e.type.equals(type);
+            if (pinnedOnly) cond = cond & e.pinned.equals(true);
+            return cond;
+          }))
+        .get();
+    return rows.map((e) => e.id).toList(growable: false);
+  }
+
+  /// 批量软删（单事务）：语义与 [softDelete] 完全一致，只是一次处理多条。
+  ///
+  /// 为什么必须裹在一个事务里：批量删 30 条若中途失败，用户会停在"删了一半"的状态，
+  /// 而他没有任何办法知道自己删到了哪一条 —— 要么全成，要么全不成。
+  /// 已被删除的 id 会被跳过，返回值是**实际**受影响的条数。
+  Future<int> softDeleteMany(List<int> ids) {
+    if (ids.isEmpty) return Future.value(0);
+    return transaction(() async {
+      final rows = await (select(entries)
+            ..where((e) => e.id.isIn(ids) & e.deleted.equals(false)))
+          .get();
+      if (rows.isEmpty) return 0;
+      final now = DateTime.now();
+      for (final row in rows) {
+        await (update(entries)..where((e) => e.id.equals(row.id))).write(
+          EntriesCompanion(
+            deleted: const Value(true),
+            updatedAt: Value(now),
+            version: Value(row.version + 1),
+          ),
+        );
+      }
+      // FTS 清理同样要在本事务内完成：留下悬空的索引行会让搜索命中已删记录
+      final placeholders = List.filled(rows.length, '?').join(',');
+      await customStatement(
+        'DELETE FROM entries_fts WHERE entry_id IN ($placeholders)',
+        rows.map((e) => e.id).toList(growable: false),
+      );
+      return rows.length;
+    });
+  }
+
+  /// 批量置顶 / 取消置顶（单事务，理由同 [softDeleteMany]）
+  Future<int> setPinnedMany(List<int> ids, {required bool pinned}) {
+    if (ids.isEmpty) return Future.value(0);
+    return transaction(() async {
+      final rows =
+          await (select(entries)..where((e) => e.id.isIn(ids))).get();
+      final now = DateTime.now();
+      for (final row in rows) {
+        await (update(entries)..where((e) => e.id.equals(row.id))).write(
+          EntriesCompanion(
+            pinned: Value(pinned),
+            updatedAt: Value(now),
+            version: Value(row.version + 1),
+          ),
+        );
+      }
+      return rows.length;
+    });
+  }
+
   /// 回收站**永久删除**（W7）：物理删除条目行，并清理它的全部附属数据。
   ///
   /// 顺序不能反：drift 默认开启外键约束，子表行必须先处理。

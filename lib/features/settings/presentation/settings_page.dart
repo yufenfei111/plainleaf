@@ -32,7 +32,7 @@ class SettingsPage extends ConsumerWidget {
           // 外观分组（W9 主题系统）：主题模式 / 字体缩放 / 强调色。
           // 放在备份分组之前，作为高频设置入口更顺手。
           _appearanceCard(context, ref),
-          const Divider(),
+          _sectionCard(context, '数据与导出', <Widget>[
           ListTile(
             leading: const Icon(Icons.archive_outlined),
             title: const Text('导出备份包（.plbk）'),
@@ -69,16 +69,19 @@ class SettingsPage extends ConsumerWidget {
             subtitle: const Text('为早期记录重新生成缩略图，列表滑动更流畅'),
             onTap: () => _backfillThumbs(context, ref),
           ),
-          const Divider(),
+          ]),
+          _sectionCard(context, '查找', <Widget>[
           ListTile(
             leading: const Icon(Icons.search),
             title: const Text('全文搜索'),
             subtitle: const Text('FTS5 标题与正文检索'),
             onTap: () => _goSearch(context),
           ),
-          const Divider(),
+          ]),
           _cloudBackupCard(context, ref),
+          _sectionCard(context, '安全', <Widget>[
           _appLockTile(context, ref),
+          ]),
           ListTile(
             leading: const Icon(Icons.info_outline),
             title: const Text('关于素页'),
@@ -92,6 +95,27 @@ class SettingsPage extends ConsumerWidget {
             ),
             isThreeLine: true,
           ),
+        ],
+      ),
+    );
+  }
+
+  /// 分组卡片（W15 布局升级）
+  ///
+  /// 为什么把散落的 ListTile 收进卡片：之前设置页是「一条 ListTile + 一条 Divider」
+  /// 的长流水，十几个条目平铺下来没有任何层级——找一个开关只能靠往下扫。
+  /// 分组之后一眼能看出「导出相关都在一起 / 安全相关都在一起」。
+  Widget _sectionCard(BuildContext context, String title, List<Widget> children) {
+    return Card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 2),
+            child: Text(title, style: Theme.of(context).textTheme.titleMedium),
+          ),
+          ...children,
+          const SizedBox(height: 6),
         ],
       ),
     );

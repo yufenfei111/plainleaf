@@ -118,6 +118,39 @@ class LocalTimelineRepository implements TimelineRepository {
   }
 
   @override
+  Future<List<int>> selectIdsByFilter({
+    TimelineFilter filter = const TimelineFilter(),
+  }) async {
+    try {
+      return await _dao.selectIdsByFilter(
+        notebookId: filter.notebookId,
+        type: filter.type?.name,
+        pinnedOnly: filter.pinnedOnly,
+      );
+    } on Exception catch (error) {
+      throw DatabaseException('读取筛选结果失败', cause: error);
+    }
+  }
+
+  @override
+  Future<int> softDeleteMany(List<int> ids) async {
+    try {
+      return await _dao.softDeleteMany(ids);
+    } on Exception catch (error) {
+      throw DatabaseException('批量删除失败', cause: error);
+    }
+  }
+
+  @override
+  Future<int> setPinnedMany(List<int> ids, {required bool pinned}) async {
+    try {
+      return await _dao.setPinnedMany(ids, pinned: pinned);
+    } on Exception catch (error) {
+      throw DatabaseException('批量置顶失败', cause: error);
+    }
+  }
+
+  @override
   Future<void> restore(int id) async {
     try {
       await _dao.restore(id);
