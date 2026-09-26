@@ -81,6 +81,19 @@ class TimelineActions {
 
   Future<int> emptyTrash() => _repo.emptyTrash();
 
+  // ── 批量操作（W15 需求 2 多选） ──────────────────────────────
+
+  /// 按筛选条件取全部匹配 id（「按当前筛选全选」用；不受时间轴分页限制）
+  Future<List<int>> idsMatching(TimelineFilter filter) =>
+      _repo.selectIdsByFilter(filter: filter);
+
+  /// 批量移入回收站（软删，单事务）；返回实际受影响条数
+  Future<int> deleteMany(List<int> ids) => _repo.softDeleteMany(ids);
+
+  /// 批量置顶 / 取消置顶（单事务）；返回实际受影响条数
+  Future<int> pinMany(List<int> ids, {required bool pinned}) =>
+      _repo.setPinnedMany(ids, pinned: pinned);
+
   /// 补齐历史缩略图（W6 遗留入口；返回处理条数）
   Future<int> backfillDerived({int limit = 200}) =>
       _repo.backfillDerived(limit: limit);

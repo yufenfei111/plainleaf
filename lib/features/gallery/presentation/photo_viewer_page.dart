@@ -2,9 +2,12 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 
+import '../../../core/errors/app_exception.dart';
 import '../domain/entities/gallery_asset.dart';
+import 'providers/gallery_providers.dart';
 
 /// 解码宽度上限（物理像素）
 ///
@@ -74,8 +77,10 @@ enum _GestureAxis { horizontal, vertical }
 /// 2. **解码尺寸全程受限**（见 [viewerCacheWidth]）：全屏并不是「可以放肆解码原图」
 ///    的豁免区，恰恰相反——这里最容易出现一张几千像素的原图，所以每一级都必须带
 ///    cacheWidth，缩放也要有上下界。
-/// 3. **交互保持克制**：只有翻页 / 缩放 / 关闭三件事，不做分享、保存、编辑。
-class PhotoViewerPage extends StatefulWidget {
+/// 3. **交互保持克制**：翻页 / 缩放 / 关闭，加上（W15 起）保存到设备；不做编辑与分享。
+///    保存是用户明确要求补的：看完一张图最常见的下一步就是"把它存下来"，
+///    在此之前用户只能截图——既损画质，又会带上界面元素。
+class PhotoViewerPage extends ConsumerStatefulWidget {
   const PhotoViewerPage({
     super.key,
     required this.assets,
@@ -122,10 +127,10 @@ class PhotoViewerPage extends StatefulWidget {
   }
 
   @override
-  State<PhotoViewerPage> createState() => _PhotoViewerPageState();
+  ConsumerState<PhotoViewerPage> createState() => _PhotoViewerPageState();
 }
 
-class _PhotoViewerPageState extends State<PhotoViewerPage>
+class _PhotoViewerPageState extends ConsumerState<PhotoViewerPage>
     with TickerProviderStateMixin {
   late final PageController _page;
   late final AnimationController _bounce;
@@ -319,6 +324,38 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
     _bounce.forward(from: 0);
   }
 
+  /// 保存当前这张到设备（W15 需求 3）
+  ///
+  /// 用**原图**（relPath）而不是 medium/thumb：用户要保存的是这张照片本身，
+  /// 给一张 400px 的缩略图等于给了一个残次品，而且他很难立刻察觉。
+  /// 原图缺失时明确告知，不做"悄悄存个缩略版"这种事。
+  Future<void> _saveCurrent() async {
+    final asset = widget.assets[_index];
+    final messenger = ScaffoldMessenger.of(context);
+    final source = File(p.join(widget.supportDir, asset.relPath));
+    if (!source.existsSync()) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('原图已不在设备上，无法保存')),
+      );
+      return;
+    }
+    try {
+      final result = await ref.read(imageSaverProvider).save(source.path);
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(content: Text(result.userMessage), duration: const Duration(seconds: 4)),
+      );
+    } on ExportException catch (error) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(content: Text(error.message), duration: const Duration(seconds: 6)),
+      );
+    } on Exception catch (error) {
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(content: Text('保存失败：$error')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -385,6 +422,15 @@ class _PhotoViewerPageState extends State<PhotoViewerPage>
                         ),
                       ),
                       const Spacer(),
+                      IconButton(
+                        key: const Key('viewer-save'),
+                        tooltip: '保存到设备',
+                        icon: Icon(
+                          Icons.download_outlined,
+                          color: stageForeground(context),
+                        ),
+                        onPressed: _saveCurrent,
+                      ),
                       IconButton(
                         tooltip: '关闭',
                         icon: Icon(

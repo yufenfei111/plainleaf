@@ -33,6 +33,18 @@ abstract interface class TimelineRepository {
   /// 软删除：deleted 置位 + FTS 行清除，同一事务；物理行保留（回收站预留）
   Future<void> softDelete(int id);
 
+  /// 按筛选条件取**全部**匹配 id（W15 多选：「按当前筛选全选」用）。
+  /// 与 [watchTimeline] 的区别是不带分页 limit —— 见 DAO 里的详细说明。
+  Future<List<int>> selectIdsByFilter({
+    TimelineFilter filter = const TimelineFilter(),
+  });
+
+  /// 批量软删（单事务）；返回实际受影响条数
+  Future<int> softDeleteMany(List<int> ids);
+
+  /// 批量置顶 / 取消置顶（单事务）；返回实际受影响条数
+  Future<int> setPinnedMany(List<int> ids, {required bool pinned});
+
   /// 从回收站恢复：deleted 复位 + FTS 行重建，同一事务
   Future<void> restore(int id);
 

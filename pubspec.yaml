@@ -7,7 +7,7 @@ publish_to: 'none'
 # 历史教训：0.2.0+2 从 W10 末端一路用到 W14（横跨 W11–W14 四个周次的工作量，
 # 含 M3 里程碑；日历时间 9/22–9/26），装上去看不出任何变化，
 # 而且 W10 已经"修正版本号停滞"过一次，靠"记得手改"防不住，只能靠机械校验。
-version: 0.4.0-beta+14
+version: 0.4.0-beta+15
 
 environment:
   sdk: ^3.13.2
@@ -56,6 +56,10 @@ dependencies:
   flutter_secure_storage: ^9.2.0 # §4.3：密钥必须入系统安全容器，不进 shared_preferences/代码
   local_auth: ^2.3.0             # 应用锁的生物识别快速解锁（不可用时不阻塞，降级到密码）
   pdf: ^3.11.0                   # PDF 导出（纯 Dart 生成，不依赖打印服务）
+
+  # W15 相册：把图片保存到系统相册（Android/iOS）。桌面端走"落盘到下载目录"降级，
+  # 见 lib/core/media/image_saver.dart —— 桌面没有"系统相册"这个概念。
+  gal: ^2.3.0
 
 dev_dependencies:
   flutter_test:

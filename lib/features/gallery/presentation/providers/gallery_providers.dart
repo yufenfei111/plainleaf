@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/providers.dart';
+import '../../../../core/media/image_saver.dart';
 import '../../data/gallery_repository_impl.dart';
 import '../../domain/entities/gallery_asset.dart';
 import '../../domain/repositories/gallery_repository.dart';
@@ -8,6 +9,13 @@ import '../../domain/repositories/gallery_repository.dart';
 final galleryRepositoryProvider = Provider<GalleryRepository>((ref) {
   return LocalGalleryRepository(ref.watch(dbProvider).assetsDao);
 });
+
+/// 图片保存器（W15 需求 3）
+///
+/// 测试必须 override 成 `RecordingImageSaver`：默认实现里 Android/iOS 走 `gal`
+/// 平台通道、桌面走真实磁盘，在 `flutter test` 里两者都不该被触发。
+final imageSaverProvider =
+    Provider<ImageSaver>((ref) => defaultImageSaver());
 
 /// 相册分页状态（W6 性能红线：一次只取一屏多一点，滚动到底再续）
 /// 用 AsyncNotifier 承载：首屏 AsyncLoading → AsyncData，加载更多时保留已有数据。

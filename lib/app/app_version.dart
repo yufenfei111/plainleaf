@@ -22,10 +22,10 @@ class AppVersion {
 
   /// 与 `pubspec.yaml` 的 `version` 中 `+` 之后的部分严格一致。
   /// Android 的 versionCode 也取它 —— 单调递增，"装没装上新的"一眼可判。
-  static const int build = 14;
+  static const int build = 15;
 
   /// 当前开发阶段（纯展示，不参与构建）
-  static const String stageLabel = '阶段 4 开发中 · W14';
+  static const String stageLabel = '阶段 4 开发中 · W15';
 
   /// 关于页展示用：`v0.4.0-beta (build 14)`
   static String get display => 'v$name (build $build)';

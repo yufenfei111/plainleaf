@@ -15,6 +15,7 @@ import '../../../shared/widgets/empty_state.dart';
 import '../../../shared/widgets/skeleton.dart';
 import '../../detail/presentation/entry_detail_page.dart' show entryThumbHeroTag;
 import '../../notebooks/presentation/providers/notebooks_providers.dart';
+import 'providers/note_selection.dart';
 import 'providers/timeline_providers.dart';
 import 'widgets/on_this_day_card.dart';
 
@@ -134,6 +135,11 @@ class _FilterBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final filter = ref.watch(timelineFilterProvider);
+    final selection = ref.watch(noteSelectionProvider);
+    // 选择模式下这一条直接换成多选工具条：多选与筛选属于同一块「操作区」，
+    // 不另占一行——时间轴上方空间很宝贵，多一行就少看见一张卡片。
+    if (selection.active) return _SelectionBar(selection: selection);
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
       child: Row(
@@ -150,9 +156,189 @@ class _FilterBar extends ConsumerWidget {
                   .update((_) => const TimelineFilter()),
               child: const Text('清除'),
             ),
+          // W15 多选入口：长按卡片也能进，但长按是隐藏手势，
+          // 不给一个看得见的入口等于这个功能不存在。
+          TextButton.icon(
+            key: const Key('enter-selection'),
+            onPressed: () => ref.read(noteSelectionProvider.notifier).enter(),
+            icon: const Icon(Icons.checklist, size: 18),
+            label: const Text('多选'),
+          ),
         ],
       ),
     );
+  }
+}
+
+/// 多选工具条（W15 需求 2）
+///
+/// 放在筛选条的位置而不是 AppBar：AppBar 已有 4 个图标（日历/搜索/草稿/回收站），
+/// 再塞两个必然在窄屏上挤掉标题；而多选与筛选本来就是同一件事的两半
+/// ——「按条件筛选 + 批量选择」。
+class _SelectionBar extends ConsumerWidget {
+  const _SelectionBar({required this.selection});
+
+  final NoteSelection selection;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+      child: Row(
+        children: [
+          Text(
+            selection.hasAny ? '已选 ${selection.count} 条' : '点卡片选择记录',
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
+          const Spacer(),
+          TextButton(
+            key: const Key('selection-select-all'),
+            onPressed: () => _selectAllMatching(context, ref),
+            child: const Text('全选'),
+          ),
+          IconButton(
+            key: const Key('selection-more'),
+            tooltip: '批量操作',
+            icon: const Icon(Icons.more_vert),
+            onPressed:
+                selection.hasAny ? () => _openBulkSheet(context, ref) : null,
+          ),
+          IconButton(
+            key: const Key('selection-exit'),
+            tooltip: '退出多选',
+            icon: const Icon(Icons.close),
+            onPressed: () => ref.read(noteSelectionProvider.notifier).exit(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 按当前筛选全选
+  ///
+  /// 走的是 `selectIdsByFilter`（不带分页 limit）而不是"屏幕上这些"——
+  /// 用户说"按条件筛选后全选"，要的就是该条件下的**全部**记录。
+  Future<void> _selectAllMatching(BuildContext context, WidgetRef ref) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final filter = ref.read(timelineFilterProvider);
+    try {
+      final ids = await ref.read(timelineActionsProvider).idsMatching(filter);
+      if (ids.isEmpty) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('当前筛选下没有可选的记录')),
+        );
+        return;
+      }
+      ref.read(noteSelectionProvider.notifier).selectAll(ids);
+      // 必须说清范围：用户极易以为"全选 = 屏幕上这十几条"，
+      // 接着一点删除，删掉的是他根本没看见的那些记录。
+      messenger.showSnackBar(SnackBar(
+        content: Text(filter.isEmpty
+            ? '已选中全部 ${ids.length} 条记录'
+            : '已按当前筛选选中 ${ids.length} 条记录'),
+        duration: const Duration(seconds: 2),
+      ));
+    } on Exception catch (error) {
+      messenger.showSnackBar(SnackBar(content: Text('读取筛选结果失败：$error')));
+    }
+  }
+
+  Future<void> _openBulkSheet(BuildContext context, WidgetRef ref) async {
+    final count = ref.read(noteSelectionProvider).count;
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              dense: true,
+              title: Text(
+                '已选 $count 条',
+                style: Theme.of(sheetContext).textTheme.titleSmall,
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.push_pin_outlined),
+              title: const Text('批量置顶'),
+              onTap: () => Navigator.pop(sheetContext, 'pin'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.push_pin),
+              title: const Text('取消置顶'),
+              onTap: () => Navigator.pop(sheetContext, 'unpin'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline),
+              title: const Text('移到回收站'),
+              onTap: () => Navigator.pop(sheetContext, 'delete'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (choice == null || !context.mounted) return;
+    if (choice == 'delete') {
+      await _deleteSelected(context, ref);
+    } else {
+      await _pinSelected(context, ref, pinned: choice == 'pin');
+    }
+  }
+
+  Future<void> _pinSelected(
+    BuildContext context,
+    WidgetRef ref, {
+    required bool pinned,
+  }) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final ids = ref.read(noteSelectionProvider).ids.toList(growable: false);
+    try {
+      final n = await ref
+          .read(timelineActionsProvider)
+          .pinMany(ids, pinned: pinned);
+      ref.read(noteSelectionProvider.notifier).exit();
+      messenger.showSnackBar(
+        SnackBar(content: Text(pinned ? '已置顶 $n 条' : '已取消置顶 $n 条')),
+      );
+    } on Exception catch (error) {
+      messenger.showSnackBar(SnackBar(content: Text('批量操作失败：$error')));
+    }
+  }
+
+  /// 批量删除：先二次确认，且**把条数写进标题**
+  ///
+  /// 软删可恢复（回收站 30 天），但仍然要确认——批量操作是最容易"手一滑
+  /// 影响一片"的地方，而用户此刻的心理预期往往是"删屏幕上这几条"。
+  Future<void> _deleteSelected(BuildContext context, WidgetRef ref) async {
+    final count = ref.read(noteSelectionProvider).count;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('把 $count 条记录移入回收站？'),
+        content: const Text('移入回收站后 30 天内都可以恢复，不会立刻删除图片文件。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('移入回收站'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    final ids = ref.read(noteSelectionProvider).ids.toList(growable: false);
+    try {
+      final n = await ref.read(timelineActionsProvider).deleteMany(ids);
+      ref.read(noteSelectionProvider.notifier).exit();
+      messenger.showSnackBar(SnackBar(content: Text('已把 $n 条记录移入回收站')));
+    } on Exception catch (error) {
+      messenger.showSnackBar(SnackBar(content: Text('批量删除失败：$error')));
+    }
   }
 }
 
@@ -755,26 +941,53 @@ class _EntryCardState extends ConsumerState<_EntryCard>
   /// 免得为了包一层过渡把整段布局重排缩进。
   Widget _buildCard(BuildContext context) {
     final entry = widget.entry;
+    final mode = ref.watch(noteSelectionProvider);
+    final selected = mode.contains(entry.id);
     final moodColor = entry.mood == null ? null : _moodColors[entry.mood!];
     // 有缩略图用缩略图，没有（W4 期历史数据）回退原图，但解码尺寸仍受限
     final thumbRel = entry.firstAssetThumbPath ?? entry.firstAssetRelPath;
     return Card(
+      // 选中态给整卡描边，而不是只靠左侧那个 20px 的圈：
+      // 手指按住卡片时会被挡住一小块，描边是"我确实选中了这张"最可靠的反馈。
+      shape: selected
+          ? RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: BorderSide(
+                color: Theme.of(context).colorScheme.primary,
+                width: 1.6,
+              ),
+            )
+          : null,
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        onTap: () => context.push('/detail?id=${entry.id}'),
-        // 长按出操作菜单：置顶 / 删除（W7 置顶收藏）
-        onLongPress: () => _showEntryMenu(context),
+        // 多选模式下点卡片 = 切换选中；其余情况保持原行为（进详情）
+        onTap: mode.active
+            ? () => ref.read(noteSelectionProvider.notifier).toggle(entry.id)
+            : () => context.push('/detail?id=${entry.id}'),
+        // 长按进多选（新交互）；多选模式下再长按 = 退出。
+        // 原先长按弹出的单条菜单**没有丢**——它搬到了卡片右侧的「更多」按钮，
+        // 能力不变、入口更显眼（长按属于隐藏手势，本来就不好发现）。
+        onLongPress: mode.active
+            ? () => ref.read(noteSelectionProvider.notifier).exit()
+            : () => ref.read(noteSelectionProvider.notifier).start(entry.id),
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (mode.active) ...[
+                _SelectBadge(selected: selected),
+                const SizedBox(width: 10),
+              ],
               Container(
-                width: 52,
-                height: 52,
+                // W15 布局升级：52 → 64。52 在 3x 屏上只有 156 物理像素，
+                // 照片内容基本看不清，用户得点进去才知道是哪张；
+                // 64 是"能认出画面"的最小档，卡片高度只多 12，一屏仍放得下三张。
+                width: 64,
+                height: 64,
                 decoration: BoxDecoration(
                   color: Theme.of(context).colorScheme.primaryContainer,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(14),
                 ),
                 clipBehavior: Clip.antiAlias,
                 child: thumbRel != null
@@ -782,7 +995,7 @@ class _EntryCardState extends ConsumerState<_EntryCard>
                     ? Hero(
                         tag: entryThumbHeroTag(entry.id),
                         child: _ThumbTile(
-                            rel: thumbRel, root: widget.root, size: 52),
+                            rel: thumbRel, root: widget.root, size: 64),
                       )
                     : Icon(
                         switch (entry.type) {
@@ -849,6 +1062,15 @@ class _EntryCardState extends ConsumerState<_EntryCard>
                   ],
                 ),
               ),
+              // 单条操作的显式入口（多选模式下隐藏，那时操作走批量工具条）
+              if (!mode.active)
+                IconButton(
+                  key: Key('entry-more-${entry.id}'),
+                  icon: const Icon(Icons.more_vert, size: 20),
+                  tooltip: '更多操作',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => _showEntryMenu(context),
+                ),
             ],
           ),
         ),
@@ -928,6 +1150,40 @@ class _EntryCardState extends ConsumerState<_EntryCard>
       // 删除失败要把卡片淡回来，不能把它留在半透明的「已退场」状态
       _ctrl.forward();
     }
+  }
+}
+
+/// 多选勾选标记（W15 需求 2）
+///
+/// 用 `AnimatedContainer`（隐式、一次性、由状态变化驱动）而不是自建
+/// AnimationController + repeat：常驻 ticker 会让 `pumpAndSettle` 永远等不到静止，
+/// 本项目已被这个坑拖死过两次（W10 骨架屏、W13 进度条）。
+class _SelectBadge extends StatelessWidget {
+  const _SelectBadge({required this.selected});
+
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return SizedBox(
+      width: 24,
+      height: 24,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: selected ? scheme.primary : Colors.transparent,
+          border: Border.all(
+            color: selected ? scheme.primary : scheme.outline,
+            width: 1.6,
+          ),
+        ),
+        child: selected
+            ? Icon(Icons.check, size: 16, color: scheme.onPrimary)
+            : null,
+      ),
+    );
   }
 }
 

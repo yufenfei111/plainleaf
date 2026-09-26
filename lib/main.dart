@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 
 import 'app/providers.dart';
 import 'app/router.dart';
+import 'app/splash_transition.dart';
 import 'app/theme.dart';
 import 'core/db/database.dart';
 import 'core/db/seed.dart';
@@ -92,12 +93,15 @@ class PlainLeafApp extends StatelessWidget {
           themeMode: themeMode ?? ref.watch(themeModeProvider),
           routerConfig: routerConfig ?? appRouter,
           // 字体缩放走 MediaQuery 覆盖：textScaleFactor 已废弃，改用 TextScaler
-          // 应用锁门控（W14）挂在builder 这一层的内部而不是 MaterialApp 之外：
-          // 解锁页要用 App 的主题与文案，必须在 MaterialApp 之下才拿得到。
+          // 层级顺序（W15）：启动过场 → 应用锁 → 路由内容。
+          // 过场必须在最外层，锁屏才不会在启动动画底下「闪一下」；
+          // 两层都挂在 MaterialApp 之内，是为了拿到 App 的主题与文案。
           builder: (context, child) => MediaQuery(
             data: MediaQuery.of(context)
                 .copyWith(textScaler: TextScaler.linear(scale)),
-            child: AppLockGate(child: child ?? const SizedBox.shrink()),
+            child: SplashTransition(
+              child: AppLockGate(child: child ?? const SizedBox.shrink()),
+            ),
           ),
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
