@@ -1,4 +1,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- W13 云备份（WebDAV）需要联网。
+         ⚠️ 必须在此（main）显式声明：Flutter 模板只在 debug / profile 变体里声明了
+         INTERNET（那是给 hot reload 用的），release 变体不含它。
+         漏掉这一行的后果是——**release 包完全无法联网**，云备份整体静默失效
+         （表现为 SocketException，而 UI 只会说"连不上服务器"），
+         但 debug 包与 `flutter test` 一切正常，本机根本测不出来。
+         这是 W16 发布准备时发现的缺陷，不要删。 -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <!-- W14 应用锁：指纹快速解锁（local_auth 走 AndroidX BiometricPrompt）。
          这个权限是普通权限（normal），安装时不弹框、不影响上架说明。 -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC"/>
