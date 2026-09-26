@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:drift/drift.dart';
 import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
@@ -6,6 +8,8 @@ import '../../../core/db/daos/assets_dao.dart';
 import '../../../core/db/daos/entries_dao.dart';
 import '../../../core/db/database.dart';
 import '../../../core/errors/app_exception.dart';
+import '../../../core/media/asset_kind.dart';
+import '../../../core/media/mime_lookup.dart';
 import '../../../core/media/thumbnail_pipeline.dart';
 import '../../../core/storage/media_storage.dart';
 import '../domain/entities/entry_asset.dart';
@@ -243,30 +247,56 @@ class LocalTimelineRepository implements TimelineRepository {
     );
   }
 
-  /// 挂接图片（W6：原图入库 + 两级缩略图转码）
-  /// 顺序：先复制原图落库（保证用户立刻看到图），再在 isolate 里转码并回填
-  /// thumb/medium 与宽高、sha256。转码失败不回滚资产——原图仍在，
-  /// 列表回退原图显示，后续可重跑 `backfillDerived()` 补齐。
+  /// 挂接图片（W6）。与 [attachFile] 等价，保留旧名以免改动既有调用点与用例。
   @override
-  Future<int> attachImage(int entryId, String sourcePath) async {
+  Future<int> attachImage(int entryId, String sourcePath) =>
+      attachFile(entryId, sourcePath);
+
+  /// 挂接任意类型的文件（W17 多格式）
+  ///
+  /// 顺序：探测类型 → 复制原文件落库（保证用户立刻看到条目）→
+  /// **仅图片**进 isolate 转码并回填 thumb/medium 与宽高、sha256。
+  ///
+  /// 转码失败不回滚资产 —— 原文件仍在，列表回退原图显示，
+  /// 后续可重跑 `backfillDerived()` 补齐。
+  @override
+  Future<int> attachFile(int entryId, String sourcePath) async {
     final dao = assetsDao;
     if (dao == null) {
-      throw const DatabaseException('AssetsDao 未注入，无法挂接图片');
+      throw const DatabaseException('AssetsDao 未注入，无法挂接文件');
     }
+
+    // 探测放在复制之前：读的是来源文件，读不到也只会退化为按扩展名判断，不抛异常。
+    final kind = AssetTypeDetector.detectFile(sourcePath);
+    final originalName = p.basename(sourcePath);
+
     int assetId;
     String rel;
+    int? sizeBytes;
     try {
+      final source = File(sourcePath);
+      // 大小必须在复制前取（复制后仍是同一个文件，但来源可能随后被删除）
+      sizeBytes = source.existsSync() ? source.lengthSync() : null;
       rel = await _media.importFile(sourcePath);
       assetId = await dao.attach(
         uuid: const Uuid().v4(),
         entryId: entryId,
-        kind: 'image',
+        kind: kind.name,
         relPath: rel,
+        mimeType: mimeForFileName(originalName),
+        originalName: originalName,
+        sizeBytes: sizeBytes,
       );
     } on Exception catch (error) {
-      throw DatabaseException('挂接图片失败', cause: error);
+      throw DatabaseException('挂接文件失败', cause: error);
     }
-    await _derive(dao, assetId, rel);
+
+    // 缩略图目前只对图片生成（P0 范围）。音视频 / PDF 的缩略图属 P1；
+    // document / archive / other 本就没有缩略图来源 —— 其 thumbPath 为 null，
+    // UI 用类型图标兜底。**null 是合法状态**，链路上已容得下。
+    if (kind == AssetKind.image) {
+      await _derive(dao, assetId, rel);
+    }
     return assetId;
   }
 
