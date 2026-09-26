@@ -63,10 +63,12 @@ flutter_*.log
 # 本机受限环境下的验证脚本及其输出（用计划任务脱离沙箱跑 flutter test）
 run_all.bat
 run_test.bat
+run_icons.bat
 test_all.txt
 test_out.txt
 test_targets.txt
 build_out.txt
+icons_out.txt
 
 # 真机走查用的样例备份包（明文/加密对照，本地生成，不入库）
 sample-*.plbk
