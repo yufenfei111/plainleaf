@@ -9,9 +9,13 @@ import '../../../app/providers.dart';
 import '../../../app/theme.dart';
 import '../../../core/exporter/backup_service.dart';
 import '../../../core/exporter/markdown_exporter.dart';
+import '../../../core/sync/webdav_client.dart';
+import '../../../core/sync/webdav_config.dart';
 import '../../timeline/presentation/providers/timeline_providers.dart';
+import 'providers/webdav_providers.dart';
 
-/// 我的 Tab（W5：备份与导出真实功能上线；同步/应用锁按 W13–W15 排期）
+/// 我的 Tab（W5：备份与导出真实功能上线；W13 云备份（WebDAV 单向）已上线；
+/// 应用锁按 W14 排期）
 class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});
 
@@ -63,12 +67,7 @@ class SettingsPage extends ConsumerWidget {
             onTap: () => _goSearch(context),
           ),
           const Divider(),
-          ListTile(
-            leading: const Icon(Icons.cloud_upload_outlined),
-            title: const Text('备份与同步（WebDAV）'),
-            subtitle: const Text('W13 上线'),
-            enabled: false,
-          ),
+          _cloudBackupCard(context, ref),
           ListTile(
             leading: const Icon(Icons.lock_outline),
             title: const Text('应用锁'),
@@ -258,6 +257,285 @@ class SettingsPage extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  /// 云备份卡片（W13：WebDAV 单向备份上传/恢复）
+  ///
+  /// 取代原先那块 disabled 的占位入口。未配置时只放开「配置」按钮——
+  /// 让用户在没填地址的情况下点到必然失败的操作，是纯负体验。
+  ///
+  /// 配置用 FutureProvider 读，但**不用 `AsyncValue.when`**：
+  /// 这里是「点一下做一件事」的一次性动作，不是随数据变化的列表流，
+  /// 走 when 会在重载时把上一次的操作结果冲掉（`valueOrNull` 更合适）。
+  Widget _cloudBackupCard(BuildContext context, WidgetRef ref) {
+    final textTheme = Theme.of(context).textTheme;
+    final scheme = Theme.of(context).colorScheme;
+    final config = ref.watch(webdavConfigProvider).valueOrNull;
+    final status = ref.watch(cloudBackupStatusProvider);
+    // Material 3 按钮默认高 40，这里补到 44 满足触控尺寸下限
+    final outlineStyle = OutlinedButton.styleFrom(
+      minimumSize: const Size(48, 44),
+    );
+    final filledStyle = FilledButton.styleFrom(
+      minimumSize: const Size(48, 44),
+    );
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('云备份（WebDAV）', style: textTheme.titleMedium),
+            const SizedBox(height: 4),
+            Text(
+              config == null
+                  ? '未配置。填写服务器地址后，可把备份包上传到你自己的网盘'
+                  : '已配置 ${config.displayHost}（单向：只上传与恢复，不做双向同步）',
+              style: textTheme.bodySmall,
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                OutlinedButton.icon(
+                  style: outlineStyle,
+                  onPressed: () => _editWebDavConfig(context, ref, config),
+                  icon: const Icon(Icons.settings_outlined),
+                  label: Text(config == null ? '配置' : '修改配置'),
+                ),
+                OutlinedButton.icon(
+                  style: outlineStyle,
+                  onPressed: config == null || status.isBusy
+                      ? null
+                      : () => ref
+                          .read(cloudBackupActionsProvider)
+                          .testConnection(config),
+                  icon: const Icon(Icons.wifi_tethering_outlined),
+                  label: const Text('测试连接'),
+                ),
+                FilledButton.icon(
+                  style: filledStyle,
+                  onPressed: config == null || status.isBusy
+                      ? null
+                      : () => _uploadBackup(context, ref, config),
+                  icon: const Icon(Icons.cloud_upload_outlined),
+                  label: const Text('立即上传'),
+                ),
+                OutlinedButton.icon(
+                  style: outlineStyle,
+                  onPressed: config == null || status.isBusy
+                      ? null
+                      : () => _restoreFromCloud(context, ref, config),
+                  icon: const Icon(Icons.cloud_download_outlined),
+                  label: const Text('从云端恢复'),
+                ),
+              ],
+            ),
+            if (status.kind != CloudBackupStatusKind.idle) ...[
+              const SizedBox(height: 12),
+              // 只有「进行中」才画进度条：它是循环动画，常驻会拖住测试框架
+              if (status.isBusy) const LinearProgressIndicator(),
+              if (status.message != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  status.message!,
+                  style: textTheme.bodyMedium?.copyWith(
+                    color: status.kind == CloudBackupStatusKind.failure
+                        ? scheme.error
+                        : null,
+                  ),
+                ),
+              ],
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 填写/修改 WebDAV 配置。
+  /// 对话框一律用**它自己的 context 收尾**——用页面级 context.pop() 会把整页弹掉。
+  Future<void> _editWebDavConfig(
+    BuildContext context,
+    WidgetRef ref,
+    WebDavConfig? current,
+  ) async {
+    final urlController = TextEditingController(text: current?.baseUrl ?? '');
+    final userController = TextEditingController(text: current?.username ?? '');
+    final passController = TextEditingController(text: current?.password ?? '');
+    WebDavConfig? edited;
+    try {
+      edited = await showDialog<WebDavConfig>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('配置 WebDAV'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: urlController,
+                  keyboardType: TextInputType.url,
+                  decoration: const InputDecoration(
+                    labelText: '服务器地址',
+                    hintText: 'https://dav.example.com/dav/素页备份/',
+                  ),
+                ),
+                TextField(
+                  controller: userController,
+                  decoration: const InputDecoration(labelText: '账号'),
+                ),
+                TextField(
+                  controller: passController,
+                  obscureText: true,
+                  decoration: const InputDecoration(labelText: '密码 / 应用密码'),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(
+                dialogContext,
+                WebDavConfig(
+                  baseUrl: urlController.text.trim(),
+                  username: userController.text.trim(),
+                  password: passController.text,
+                ),
+              ),
+              child: const Text('保存'),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      // 对话框关闭后控制器就没用了，必须释放（否则每次点配置都漏三个）
+      urlController.dispose();
+      userController.dispose();
+      passController.dispose();
+    }
+    if (edited == null || !context.mounted) return;
+    await ref.read(cloudBackupActionsProvider).saveConfig(edited);
+  }
+
+  Future<void> _uploadBackup(
+    BuildContext context,
+    WidgetRef ref,
+    WebDavConfig config,
+  ) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final result = await ref.read(cloudBackupActionsProvider).upload(config);
+    if (!context.mounted) return;
+    messenger.showSnackBar(SnackBar(
+      content: Text(
+        result == null
+            ? '上传失败，请看卡片上的提示'
+            : '已上传 ${result.remoteName}（${_formatSize(result.sizeBytes)}）',
+      ),
+      duration: const Duration(seconds: 4),
+    ));
+  }
+
+  /// 从云端恢复：列远端 .plbk → 选择 → 二次确认 → 落地。
+  /// 落地前的自动备份由 BackupService.restore 负责（数据红线），这里不重复做。
+  Future<void> _restoreFromCloud(
+    BuildContext context,
+    WidgetRef ref,
+    WebDavConfig config,
+  ) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final items = await ref.read(cloudBackupActionsProvider).listRemote(config);
+    if (!context.mounted) return;
+
+    if (items == null) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('获取云端备份失败，请看卡片上的提示')),
+      );
+      return;
+    }
+    if (items.isEmpty) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('云端还没有备份包，请先上传一次')),
+      );
+      return;
+    }
+
+    final picked = await showModalBottomSheet<WebDavResource>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            const ListTile(title: Text('选择要恢复的云端备份')),
+            for (final item in items)
+              ListTile(
+                leading: const Icon(Icons.cloud_outlined),
+                title: Text(item.name),
+                subtitle: Text(_describeRemote(item)),
+                onTap: () => Navigator.pop(sheetContext, item),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (picked == null || !context.mounted) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('确认恢复？'),
+        content: const Text(
+          '云端备份将整体覆盖当前数据。恢复前会自动再备份一次现有数据，'
+          '完成后需重启应用加载新数据。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('恢复'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    final file = await ref.read(cloudBackupActionsProvider).restore(config, picked);
+    if (!context.mounted) return;
+    if (file == null) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('恢复失败，请看卡片上的提示')),
+      );
+      return;
+    }
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('恢复完成'),
+        content: const Text('数据已替换，请完全退出并重启应用以加载新数据。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('知道了'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _describeRemote(WebDavResource item) {
+    final size = _formatSize(item.sizeBytes ?? 0);
+    final when = item.modifiedAt;
+    return when == null ? size : '${_formatTime(when)} · $size';
   }
 
   Future<void> _exportBackup(BuildContext context, WidgetRef ref) async {
