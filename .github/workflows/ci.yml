@@ -27,6 +27,12 @@ jobs:
       - name: pub get
         run: flutter pub get
 
+      # 版本号曾经从 W10 停到 W14 没人动（0.2.0+2 用了 4 周），
+      # 原因是没有任何机械约束。这一步把它变成门禁：
+      # pubspec.yaml 的 version 必须与 lib/app/app_version.dart 一致。
+      - name: 版本号一致性（pubspec ↔ app_version.dart）
+        run: dart run tool/check_version.dart
+
       - name: analyze（0 警告门禁）
         run: flutter analyze --fatal-infos
 

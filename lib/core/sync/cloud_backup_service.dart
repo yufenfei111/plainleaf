@@ -113,7 +113,11 @@ class CloudBackupService {
   ///
   /// 顺序很重要：**校验不过绝不落地**，否则一次网络损坏就会把当前数据覆盖掉。
   /// 落地后的自动备份由 `BackupService.restore` 负责（数据红线）。
-  Future<File> restore(WebDavConfig config, WebDavResource remote) async {
+  Future<File> restore(
+    WebDavConfig config,
+    WebDavResource remote, {
+    String? password,
+  }) async {
     final client = _client(config);
     List<int> bytes;
     try {
@@ -127,7 +131,11 @@ class CloudBackupService {
       final file = File(p.join(tmpDir.path, p.basename(remote.name)));
       await file.writeAsBytes(bytes, flush: true);
       try {
-        await _backups.verify(file);
+        await _backups.verify(file, password: password);
+      } on SecurityException {
+        // 加密包缺密码 / 密码错误必须**原样透出**：UI 要靠它判断
+        // "该弹密码框了"还是"密码填错了"，包成网络异常就再也问不出来。
+        rethrow;
       } on Object catch (error) {
         throw NetworkException(
           '下载到的文件不是有效的备份包，已中止恢复',
@@ -135,7 +143,7 @@ class CloudBackupService {
           cause: error,
         );
       }
-      return await _backups.restore(file);
+      return await _backups.restore(file, password: password);
     } finally {
       if (tmpDir.existsSync()) await tmpDir.delete(recursive: true);
     }

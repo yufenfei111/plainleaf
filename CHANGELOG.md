@@ -6,6 +6,16 @@
 
 ## [Unreleased]
 
+> **版本号规则（W14 起，机制性修复）**
+> - `pubspec.yaml` 的 `version` 是**唯一真源**，格式 `<里程碑线>+<buildNumber>`，
+>   buildNumber 取**周次**且单调递增（如 `0.4.0-beta+14` = 阶段 4 第 14 周）。
+>   Android 的 `versionCode` 就是它——"装没装上新的包"从此一眼可判。
+> - 关于页展示的版本读 `lib/app/app_version.dart`，由 `tool/check_version.dart`
+>   在 CI（`ci.yml` 的 analyze 之前）强制与 pubspec 一致，不一致直接红。
+> - 背景：此前 `version` 停在 `0.2.0+2`，从 W10 末端一路用到 W14（横跨 W11–W14 四个周次、含 M3 里程碑；日历 9/22–9/26），
+>   而关于页还硬编码着 `v0.2.0（M2）`——两处一起停着，看起来"自洽"所以没人发现。
+>   同一问题 W10 修过一次又复发，因此这次改成门禁而不是备注。
+
 ### Added（阶段 0 · 立项与环境，2026-09-04 ~ 09-15）
 - Flutter 工程初始化：fvm 锁定 3.47.2，包名 com.plainleaf.app，Android/iOS/Windows 三平台脚手架（Day 1）
 - 国内构建链路：Gradle 腾讯云镜像 + 依赖阿里云镜像优先（Day 1，见 docs/devlog-w1.md）
@@ -239,6 +249,37 @@
 
 - 测试：新增 test/w13_webdav_test.dart 共 14 例（本地假 HttpServer，CI 不依赖外网），
   **本机实跑 146/146 通过**，CI 口径 `dart analyze --fatal-infos lib test tool` 0 issue。
+
+### Added（阶段 4 · W14 安全与导出，2026-09-26）
+- 加密核心 `lib/core/security/`：`crypto_service.dart`（PBKDF2-HMAC-SHA256 派生 + 自描述容器 magic/盐/IV/MAC）、
+  `secret_store.dart`（系统安全容器；约定**读失败静默返回 null、写失败必须抛**）
+- 备份包加密选项：导出时可勾选「用密码加密」，整个 zip 包整体加密（文件名与条目数也是隐私）；
+  恢复时按文件头识别——缺密码弹框、密码错给分级文案；明文包与 `plbk/2` 行为一字不变
+- W13 遗留补齐：WebDAV 凭据从明文 `webdav.json` 迁移到系统安全容器，老用户首次启动自动迁移并删除明文；
+  容器不可用时退回文件，不让云备份在部分机型上变摆设
+- 应用锁：设置/修改/关闭密码（**存 verifier，不存密码也不存哈希**），冷启动与切后台自动上锁，
+  可选指纹快速解锁；如实声明「锁的是入口，不是数据库本身」
+- PDF 导出：系统中文字体探测（只收 `.ttf/.otf`，`.ttc` 实测抛 FormatException），
+  找不到字体时**明确失败**而不是产出一份打开全是方块的"成功"文件；设置页新增「导出全部记录（PDF）」
+- 错误体系扩展：`SecurityException` + `SecurityErrorKind`（authenticationFailed / passwordRequired /
+  notEncrypted / storage）与 `ExportException`（纯新增，未触碰既有类型）
+- 测试：新增 4 个文件共 27 例，**本机实跑 173/173 通过**（基线 146 + 新增 27），
+  CI 口径 `dart analyze --fatal-infos lib test tool` 0 issue
+
+**关键取舍**
+
+- **GCM 只回答"通过 / 不通过"**：密码错、文件被截断、被改一个字节，UI 上是同一句文案，不假装能区分。
+- **改 PBKDF2 迭代次数等于换一套密钥**：真要升级必须同时抬容器版本字节——默默改常量的后果是
+  老用户的应用锁与加密备份一夜之间全部失效。
+- **应用锁不是数据加密**：本地库仍明文，它防的是"手机被借用时顺手翻两下"，不夸大成加密。
+- 新增 4 个依赖：`cryptography` / `flutter_secure_storage` / `local_auth` / `pdf`
+  （用途与必要性见 `docs/verification-w14.md` 第四节）。
+
+**已知遗留**
+
+- 数据库本体仍明文；PDF 未打包字体子集（靠系统字体）；生物识别只做快速通道，不做唯一通道。
+- 真机走查（指纹解锁、息屏重锁、加密包用 7z 打不开、坚果云上传恢复）未做，
+  清单见 `docs/verification-w14.md` 第六节。
 
 ## [0.1.0] - unreleased
 
