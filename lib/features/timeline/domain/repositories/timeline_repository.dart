@@ -73,7 +73,18 @@ abstract interface class TimelineRepository {
   Future<int> emptyTrash();
 
   /// 为条目挂接一张本地图片（复制进私有目录 + assets 落库），返回 asset id
+  /// 挂接图片（W6）。与 [attachFile] 等价，保留旧名以免改动既有调用点。
   Future<int> attachImage(int entryId, String sourcePath);
+
+  /// 挂接**任意类型**的文件（W17 多格式）。
+  ///
+  /// 类型由文件头 + 扩展名探测（见 `AssetTypeDetector`）；落库时会带上 mime 与
+  /// **原始文件名** —— 落盘名是 uuid（去重、避免路径注入），非图片文件必须能看到
+  /// 「作业第三章.pdf」这种原名，否则列表里只剩一串 uuid。
+  ///
+  /// 缩略图目前只对图片生成：音视频 / PDF 的缩略图属 P1，其余类型本就没有来源，
+  /// 其 `thumbPath` 为 null，UI 用类型图标兜底（`null` 是合法状态）。
+  Future<int> attachFile(int entryId, String sourcePath);
 
   /// 条目首图相对路径（时间轴缩略图用；无图返回 null）
   Future<String?> firstImagePath(int entryId);

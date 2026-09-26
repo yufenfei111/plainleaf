@@ -11,6 +11,10 @@ class AssetsDao extends DatabaseAccessor<PlainLeafDatabase>
   AssetsDao(super.db);
 
   /// 挂接媒体资产（W6：缩略图与元信息一并落库，避免二次查询）
+  ///
+  /// W17 多格式：`kind` 不再只有 'image'（见 `AssetKind`）；
+  /// 新增 [mimeType] / [originalName] / [durationMs] 三个可选参数 ——
+  /// 非图片文件必须带上**原始文件名**，否则列表里只剩一串 uuid。
   Future<int> attach({
     required String uuid,
     required int entryId,
@@ -18,9 +22,12 @@ class AssetsDao extends DatabaseAccessor<PlainLeafDatabase>
     required String relPath,
     String? thumbPath,
     String? mediumPath,
+    String? mimeType,
+    String? originalName,
     int? width,
     int? height,
     int? sizeBytes,
+    int? durationMs,
     String? hashSha256,
   }) {
     return into(assets).insert(AssetsCompanion.insert(
@@ -30,9 +37,12 @@ class AssetsDao extends DatabaseAccessor<PlainLeafDatabase>
       relPath: relPath,
       thumbPath: Value(thumbPath),
       mediumPath: Value(mediumPath),
+      mimeType: Value(mimeType),
+      originalName: Value(originalName),
       width: Value(width),
       height: Value(height),
       sizeBytes: Value(sizeBytes),
+      durationMs: Value(durationMs),
       hashSha256: Value(hashSha256),
     ));
   }
@@ -106,6 +116,18 @@ class AssetsDao extends DatabaseAccessor<PlainLeafDatabase>
               a.entryId.equals(entryId) &
               a.deleted.equals(false) &
               a.kind.equals('image'))
+          ..orderBy([(a) => OrderingTerm.asc(a.sortIndex)]))
+        .get();
+  }
+
+  /// 条目下的**全部**资产，不限类型（W17 多格式）
+  ///
+  /// 与 [byEntry] 并存而不是替换它：相册 / 详情页 / firstImagePath 这些
+  /// 语义上就是"只看图片"的地方继续用 [byEntry]，改动面最小；
+  /// 编辑器的附件条需要显示任意类型，用这个方法。
+  Future<List<Asset>> allByEntry(int entryId) {
+    return (select(assets)
+          ..where((a) => a.entryId.equals(entryId) & a.deleted.equals(false))
           ..orderBy([(a) => OrderingTerm.asc(a.sortIndex)]))
         .get();
   }
