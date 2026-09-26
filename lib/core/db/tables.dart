@@ -53,11 +53,24 @@ class Entries extends Table {
 
 /// 媒体资产：文件存文件系统（media/yyyy/mm/），库中只存相对路径
 /// hashSha256：§4.3 修正 ①（SHA-1 已不安全，弃用计划书的 hash_sha1）
+///
+/// W17 多格式：`kind` 不再是只有 'image' ——取值见 `AssetKind` 枚举
+/// （image/video/audio/pdf/document/archive/other）。老数据 kind='image' 原样可读。
 class Assets extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get uuid => text().withLength(min: 36, max: 36)();
   IntColumn get entryId => integer().nullable().references(Entries, #id)();
   TextColumn get kind => text().withDefault(const Constant('image'))();
+
+  /// 精确 MIME 类型（可空）。`kind` 是粗分类，mime 才决定具体交给哪个处理器
+  /// （例如 image/svg+xml 与 image/png 待遇不同）。老数据留空，按 kind 兜底。
+  TextColumn get mimeType => text().nullable()();
+
+  /// 原始文件名（可空）。非图片文件必须能看到「作业第三章.pdf」——
+  /// 落盘名是 uuid（去重、避免路径注入与非法字符），原名只用于展示。
+  /// 老数据留空，UI 回退到 uuid。
+  TextColumn get originalName => text().nullable()();
+
   TextColumn get relPath => text()();
   TextColumn get thumbPath => text().nullable()();
   TextColumn get mediumPath => text().nullable()();

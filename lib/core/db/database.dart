@@ -33,7 +33,7 @@ class PlainLeafDatabase extends _$PlainLeafDatabase {
   PlainLeafDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -50,6 +50,20 @@ class PlainLeafDatabase extends _$PlainLeafDatabase {
             await customStatement(
                 'ALTER TABLE tags ADD COLUMN parent_id INTEGER NULL');
           }
+          // W17 多格式附件：assets 表同样可能已存在但缺新列（同上裸库场景）
+          final assetCols = await customSelect(
+                  "SELECT name FROM pragma_table_info('assets')",
+                  readsFrom: {assets})
+              .map((row) => row.read<String>('name'))
+              .get();
+          if (!assetCols.contains('mime_type')) {
+            await customStatement(
+                'ALTER TABLE assets ADD COLUMN mime_type TEXT NULL');
+          }
+          if (!assetCols.contains('original_name')) {
+            await customStatement(
+                'ALTER TABLE assets ADD COLUMN original_name TEXT NULL');
+          }
           // entries_fts：FTS5 虚表（归档计划书 §7.2；内容镜像 entries.title/plainText）
           // W2 起 Repository 在同一事务内双写 entries + entries_fts（红线：不用 trigger）
           await customStatement(
@@ -61,6 +75,13 @@ class PlainLeafDatabase extends _$PlainLeafDatabase {
           // v1 → v2：多级标签（issue #11）。addColumn 只增列，旧数据原样保留。
           if (from < 2) {
             await m.addColumn(tags, tags.parentId);
+          }
+          // v2 → v3：多格式附件（W17）。两列均可空，旧数据留空即可用 ——
+          // mimeType 缺省按 kind 兜底，originalName 缺省回退到 uuid，
+          // 因此**不需要任何数据回填**，加列即完成迁移。
+          if (from < 3) {
+            await m.addColumn(assets, assets.mimeType);
+            await m.addColumn(assets, assets.originalName);
           }
         },
       );

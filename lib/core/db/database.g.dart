@@ -1633,6 +1633,28 @@ class $AssetsTable extends Assets with TableInfo<$AssetsTable, Asset> {
     requiredDuringInsert: false,
     defaultValue: const Constant('image'),
   );
+  static const VerificationMeta _mimeTypeMeta = const VerificationMeta(
+    'mimeType',
+  );
+  @override
+  late final GeneratedColumn<String> mimeType = GeneratedColumn<String>(
+    'mime_type',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _originalNameMeta = const VerificationMeta(
+    'originalName',
+  );
+  @override
+  late final GeneratedColumn<String> originalName = GeneratedColumn<String>(
+    'original_name',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _relPathMeta = const VerificationMeta(
     'relPath',
   );
@@ -1797,6 +1819,8 @@ class $AssetsTable extends Assets with TableInfo<$AssetsTable, Asset> {
     uuid,
     entryId,
     kind,
+    mimeType,
+    originalName,
     relPath,
     thumbPath,
     mediumPath,
@@ -1845,6 +1869,21 @@ class $AssetsTable extends Assets with TableInfo<$AssetsTable, Asset> {
       context.handle(
         _kindMeta,
         kind.isAcceptableOrUnknown(data['kind']!, _kindMeta),
+      );
+    }
+    if (data.containsKey('mime_type')) {
+      context.handle(
+        _mimeTypeMeta,
+        mimeType.isAcceptableOrUnknown(data['mime_type']!, _mimeTypeMeta),
+      );
+    }
+    if (data.containsKey('original_name')) {
+      context.handle(
+        _originalNameMeta,
+        originalName.isAcceptableOrUnknown(
+          data['original_name']!,
+          _originalNameMeta,
+        ),
       );
     }
     if (data.containsKey('rel_path')) {
@@ -1962,6 +2001,14 @@ class $AssetsTable extends Assets with TableInfo<$AssetsTable, Asset> {
         DriftSqlType.string,
         data['${effectivePrefix}kind'],
       )!,
+      mimeType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}mime_type'],
+      ),
+      originalName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}original_name'],
+      ),
       relPath: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}rel_path'],
@@ -2032,6 +2079,15 @@ class Asset extends DataClass implements Insertable<Asset> {
   final String uuid;
   final int? entryId;
   final String kind;
+
+  /// 精确 MIME 类型（可空）。`kind` 是粗分类，mime 才决定具体交给哪个处理器
+  /// （例如 image/svg+xml 与 image/png 待遇不同）。老数据留空，按 kind 兜底。
+  final String? mimeType;
+
+  /// 原始文件名（可空）。非图片文件必须能看到「作业第三章.pdf」——
+  /// 落盘名是 uuid（去重、避免路径注入与非法字符），原名只用于展示。
+  /// 老数据留空，UI 回退到 uuid。
+  final String? originalName;
   final String relPath;
   final String? thumbPath;
   final String? mediumPath;
@@ -2051,6 +2107,8 @@ class Asset extends DataClass implements Insertable<Asset> {
     required this.uuid,
     this.entryId,
     required this.kind,
+    this.mimeType,
+    this.originalName,
     required this.relPath,
     this.thumbPath,
     this.mediumPath,
@@ -2075,6 +2133,12 @@ class Asset extends DataClass implements Insertable<Asset> {
       map['entry_id'] = Variable<int>(entryId);
     }
     map['kind'] = Variable<String>(kind);
+    if (!nullToAbsent || mimeType != null) {
+      map['mime_type'] = Variable<String>(mimeType);
+    }
+    if (!nullToAbsent || originalName != null) {
+      map['original_name'] = Variable<String>(originalName);
+    }
     map['rel_path'] = Variable<String>(relPath);
     if (!nullToAbsent || thumbPath != null) {
       map['thumb_path'] = Variable<String>(thumbPath);
@@ -2116,6 +2180,12 @@ class Asset extends DataClass implements Insertable<Asset> {
           ? const Value.absent()
           : Value(entryId),
       kind: Value(kind),
+      mimeType: mimeType == null && nullToAbsent
+          ? const Value.absent()
+          : Value(mimeType),
+      originalName: originalName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(originalName),
       relPath: Value(relPath),
       thumbPath: thumbPath == null && nullToAbsent
           ? const Value.absent()
@@ -2159,6 +2229,8 @@ class Asset extends DataClass implements Insertable<Asset> {
       uuid: serializer.fromJson<String>(json['uuid']),
       entryId: serializer.fromJson<int?>(json['entryId']),
       kind: serializer.fromJson<String>(json['kind']),
+      mimeType: serializer.fromJson<String?>(json['mimeType']),
+      originalName: serializer.fromJson<String?>(json['originalName']),
       relPath: serializer.fromJson<String>(json['relPath']),
       thumbPath: serializer.fromJson<String?>(json['thumbPath']),
       mediumPath: serializer.fromJson<String?>(json['mediumPath']),
@@ -2183,6 +2255,8 @@ class Asset extends DataClass implements Insertable<Asset> {
       'uuid': serializer.toJson<String>(uuid),
       'entryId': serializer.toJson<int?>(entryId),
       'kind': serializer.toJson<String>(kind),
+      'mimeType': serializer.toJson<String?>(mimeType),
+      'originalName': serializer.toJson<String?>(originalName),
       'relPath': serializer.toJson<String>(relPath),
       'thumbPath': serializer.toJson<String?>(thumbPath),
       'mediumPath': serializer.toJson<String?>(mediumPath),
@@ -2205,6 +2279,8 @@ class Asset extends DataClass implements Insertable<Asset> {
     String? uuid,
     Value<int?> entryId = const Value.absent(),
     String? kind,
+    Value<String?> mimeType = const Value.absent(),
+    Value<String?> originalName = const Value.absent(),
     String? relPath,
     Value<String?> thumbPath = const Value.absent(),
     Value<String?> mediumPath = const Value.absent(),
@@ -2224,6 +2300,8 @@ class Asset extends DataClass implements Insertable<Asset> {
     uuid: uuid ?? this.uuid,
     entryId: entryId.present ? entryId.value : this.entryId,
     kind: kind ?? this.kind,
+    mimeType: mimeType.present ? mimeType.value : this.mimeType,
+    originalName: originalName.present ? originalName.value : this.originalName,
     relPath: relPath ?? this.relPath,
     thumbPath: thumbPath.present ? thumbPath.value : this.thumbPath,
     mediumPath: mediumPath.present ? mediumPath.value : this.mediumPath,
@@ -2245,6 +2323,10 @@ class Asset extends DataClass implements Insertable<Asset> {
       uuid: data.uuid.present ? data.uuid.value : this.uuid,
       entryId: data.entryId.present ? data.entryId.value : this.entryId,
       kind: data.kind.present ? data.kind.value : this.kind,
+      mimeType: data.mimeType.present ? data.mimeType.value : this.mimeType,
+      originalName: data.originalName.present
+          ? data.originalName.value
+          : this.originalName,
       relPath: data.relPath.present ? data.relPath.value : this.relPath,
       thumbPath: data.thumbPath.present ? data.thumbPath.value : this.thumbPath,
       mediumPath: data.mediumPath.present
@@ -2275,6 +2357,8 @@ class Asset extends DataClass implements Insertable<Asset> {
           ..write('uuid: $uuid, ')
           ..write('entryId: $entryId, ')
           ..write('kind: $kind, ')
+          ..write('mimeType: $mimeType, ')
+          ..write('originalName: $originalName, ')
           ..write('relPath: $relPath, ')
           ..write('thumbPath: $thumbPath, ')
           ..write('mediumPath: $mediumPath, ')
@@ -2299,6 +2383,8 @@ class Asset extends DataClass implements Insertable<Asset> {
     uuid,
     entryId,
     kind,
+    mimeType,
+    originalName,
     relPath,
     thumbPath,
     mediumPath,
@@ -2322,6 +2408,8 @@ class Asset extends DataClass implements Insertable<Asset> {
           other.uuid == this.uuid &&
           other.entryId == this.entryId &&
           other.kind == this.kind &&
+          other.mimeType == this.mimeType &&
+          other.originalName == this.originalName &&
           other.relPath == this.relPath &&
           other.thumbPath == this.thumbPath &&
           other.mediumPath == this.mediumPath &&
@@ -2343,6 +2431,8 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
   final Value<String> uuid;
   final Value<int?> entryId;
   final Value<String> kind;
+  final Value<String?> mimeType;
+  final Value<String?> originalName;
   final Value<String> relPath;
   final Value<String?> thumbPath;
   final Value<String?> mediumPath;
@@ -2362,6 +2452,8 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
     this.uuid = const Value.absent(),
     this.entryId = const Value.absent(),
     this.kind = const Value.absent(),
+    this.mimeType = const Value.absent(),
+    this.originalName = const Value.absent(),
     this.relPath = const Value.absent(),
     this.thumbPath = const Value.absent(),
     this.mediumPath = const Value.absent(),
@@ -2382,6 +2474,8 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
     required String uuid,
     this.entryId = const Value.absent(),
     this.kind = const Value.absent(),
+    this.mimeType = const Value.absent(),
+    this.originalName = const Value.absent(),
     required String relPath,
     this.thumbPath = const Value.absent(),
     this.mediumPath = const Value.absent(),
@@ -2403,6 +2497,8 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
     Expression<String>? uuid,
     Expression<int>? entryId,
     Expression<String>? kind,
+    Expression<String>? mimeType,
+    Expression<String>? originalName,
     Expression<String>? relPath,
     Expression<String>? thumbPath,
     Expression<String>? mediumPath,
@@ -2423,6 +2519,8 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
       if (uuid != null) 'uuid': uuid,
       if (entryId != null) 'entry_id': entryId,
       if (kind != null) 'kind': kind,
+      if (mimeType != null) 'mime_type': mimeType,
+      if (originalName != null) 'original_name': originalName,
       if (relPath != null) 'rel_path': relPath,
       if (thumbPath != null) 'thumb_path': thumbPath,
       if (mediumPath != null) 'medium_path': mediumPath,
@@ -2445,6 +2543,8 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
     Value<String>? uuid,
     Value<int?>? entryId,
     Value<String>? kind,
+    Value<String?>? mimeType,
+    Value<String?>? originalName,
     Value<String>? relPath,
     Value<String?>? thumbPath,
     Value<String?>? mediumPath,
@@ -2465,6 +2565,8 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
       uuid: uuid ?? this.uuid,
       entryId: entryId ?? this.entryId,
       kind: kind ?? this.kind,
+      mimeType: mimeType ?? this.mimeType,
+      originalName: originalName ?? this.originalName,
       relPath: relPath ?? this.relPath,
       thumbPath: thumbPath ?? this.thumbPath,
       mediumPath: mediumPath ?? this.mediumPath,
@@ -2496,6 +2598,12 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
     }
     if (kind.present) {
       map['kind'] = Variable<String>(kind.value);
+    }
+    if (mimeType.present) {
+      map['mime_type'] = Variable<String>(mimeType.value);
+    }
+    if (originalName.present) {
+      map['original_name'] = Variable<String>(originalName.value);
     }
     if (relPath.present) {
       map['rel_path'] = Variable<String>(relPath.value);
@@ -2549,6 +2657,8 @@ class AssetsCompanion extends UpdateCompanion<Asset> {
           ..write('uuid: $uuid, ')
           ..write('entryId: $entryId, ')
           ..write('kind: $kind, ')
+          ..write('mimeType: $mimeType, ')
+          ..write('originalName: $originalName, ')
           ..write('relPath: $relPath, ')
           ..write('thumbPath: $thumbPath, ')
           ..write('mediumPath: $mediumPath, ')
@@ -6120,6 +6230,8 @@ typedef $$AssetsTableCreateCompanionBuilder =
       required String uuid,
       Value<int?> entryId,
       Value<String> kind,
+      Value<String?> mimeType,
+      Value<String?> originalName,
       required String relPath,
       Value<String?> thumbPath,
       Value<String?> mediumPath,
@@ -6141,6 +6253,8 @@ typedef $$AssetsTableUpdateCompanionBuilder =
       Value<String> uuid,
       Value<int?> entryId,
       Value<String> kind,
+      Value<String?> mimeType,
+      Value<String?> originalName,
       Value<String> relPath,
       Value<String?> thumbPath,
       Value<String?> mediumPath,
@@ -6183,6 +6297,16 @@ class $$AssetsTableFilterComposer
 
   ColumnFilters<String> get kind => $composableBuilder(
     column: $table.kind,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get mimeType => $composableBuilder(
+    column: $table.mimeType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get originalName => $composableBuilder(
+    column: $table.originalName,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -6286,6 +6410,16 @@ class $$AssetsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get mimeType => $composableBuilder(
+    column: $table.mimeType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get originalName => $composableBuilder(
+    column: $table.originalName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get relPath => $composableBuilder(
     column: $table.relPath,
     builder: (column) => ColumnOrderings(column),
@@ -6378,6 +6512,14 @@ class $$AssetsTableAnnotationComposer
   GeneratedColumn<String> get kind =>
       $composableBuilder(column: $table.kind, builder: (column) => column);
 
+  GeneratedColumn<String> get mimeType =>
+      $composableBuilder(column: $table.mimeType, builder: (column) => column);
+
+  GeneratedColumn<String> get originalName => $composableBuilder(
+    column: $table.originalName,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<String> get relPath =>
       $composableBuilder(column: $table.relPath, builder: (column) => column);
 
@@ -6459,6 +6601,8 @@ class $$AssetsTableTableManager
                 Value<String> uuid = const Value.absent(),
                 Value<int?> entryId = const Value.absent(),
                 Value<String> kind = const Value.absent(),
+                Value<String?> mimeType = const Value.absent(),
+                Value<String?> originalName = const Value.absent(),
                 Value<String> relPath = const Value.absent(),
                 Value<String?> thumbPath = const Value.absent(),
                 Value<String?> mediumPath = const Value.absent(),
@@ -6478,6 +6622,8 @@ class $$AssetsTableTableManager
                 uuid: uuid,
                 entryId: entryId,
                 kind: kind,
+                mimeType: mimeType,
+                originalName: originalName,
                 relPath: relPath,
                 thumbPath: thumbPath,
                 mediumPath: mediumPath,
@@ -6499,6 +6645,8 @@ class $$AssetsTableTableManager
                 required String uuid,
                 Value<int?> entryId = const Value.absent(),
                 Value<String> kind = const Value.absent(),
+                Value<String?> mimeType = const Value.absent(),
+                Value<String?> originalName = const Value.absent(),
                 required String relPath,
                 Value<String?> thumbPath = const Value.absent(),
                 Value<String?> mediumPath = const Value.absent(),
@@ -6518,6 +6666,8 @@ class $$AssetsTableTableManager
                 uuid: uuid,
                 entryId: entryId,
                 kind: kind,
+                mimeType: mimeType,
+                originalName: originalName,
                 relPath: relPath,
                 thumbPath: thumbPath,
                 mediumPath: mediumPath,
