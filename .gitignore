@@ -72,6 +72,9 @@ build_out.txt
 icons_out.txt
 release_out.txt
 
+# release 构建目录用的代理端口（只有一个端口号，随会话变化）
+proxy_port.txt
+
 # 真机走查用的样例备份包（明文/加密对照，本地生成，不入库）
 sample-*.plbk
 
