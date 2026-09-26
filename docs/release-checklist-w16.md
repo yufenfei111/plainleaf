@@ -34,30 +34,52 @@
 | ❌ 无效解法 | 用目录联接（junction）给项目一个 ASCII 入口 —— Gradle 会把联接**解析回真实路径**，错误信息里依旧是中文乱码 |
 | ✅ 有效解法 | **真正把代码放到纯 ASCII 路径下构建**（下面第 1 步） |
 
-### 标准流程
+### 标准流程（已脚本化，自动同步代码）
+
+构建脚本：`C:\plainleaf-release-src\run_release.bat`。
+**每次构建都会先从远端拉最新代码，同步失败则中止构建**——所以不会出现
+"改了代码却打出旧包"这种情况（这是这套流程刻意设计的安全阀）。
+
+**唯一需要每次维护的是代理端口**（它在会话之间、甚至同一会话内都会变）：
 
 ```bash
-# 1. 克隆到纯 ASCII 路径（注意：用户名下的路径都含中文，别放在 C:\Users\雨\）
-git clone -b dev "C:/Users/雨/Desktop/豆包/相册记事本项目/plainleaf" C:/plainleaf-release-src
+# 1. 现查当前端口
+env | grep -i proxy        # 形如 http://127.0.0.1:31927
 
-# 2. 构建（首次约 2 分钟；AOT 缓存命中后约 40 秒）
-cd C:/plainleaf-release-src
-flutter pub get                  # 需要代理（Gradle/pub 要下载）
-flutter build apk --release
+# 2. 写进端口文件（纯数字、一行，不要带换行以外的任何字符）
+echo -n "31927" > /c/plainleaf-release-src/proxy_port.txt
 ```
 
-产物：`C:\plainleaf-release-src\build\app\outputs\flutter-apk\app-release.apk`
-
-**本机已注册对应任务**，可替代手工执行（自动带代理、绕开 sandbox 的进程派生限制）：
+然后跑构建（本机已注册任务，自动绕开 sandbox 的进程派生限制）：
 
 ```bash
 "C:/Users/雨/.workbuddy/binaries/python/envs/default/Scripts/python.exe" \
   "C:/Users/雨/AppData/Local/Temp/run_task.py" plainleaf_release_ascii
-# 输出：C:\plainleaf-release-src\release_out.txt（含 PUBGET_EXIT / BUILD_EXIT）
 ```
 
-> 端口提醒：`run_release.bat` 里的代理端口写死为当时会话的值，**每次用之前用
-> `env | grep -i proxy` 现查并更新**，否则 Gradle 下载会挂住。
+- 产物：`C:\plainleaf-release-src\build\app\outputs\flutter-apk\app-release.apk`
+- 输出：`C:\plainleaf-release-src\release_out.txt`
+  （含 `FETCH_EXIT` / `CHECKOUT_EXIT` / `PUBGET_EXIT` / `BUILD_EXIT` 四个退出码，
+  以及本次实际检出的 commit —— **先看这四个码再相信产物**）
+
+耗时：首次约 2 分钟，AOT 缓存命中后约 40 秒。
+
+**要出某个里程碑的包**：把 `run_release.bat` 里的 `set REF=dev` 改成对应 tag
+（如 `v0.4.0-beta`）再跑，脚本会同步并检出到那个 tag。
+
+### 首次准备（换机器时做一次）
+
+```bash
+git clone "C:/Users/雨/Desktop/豆包/相册记事本项目/plainleaf" C:/plainleaf-release-src
+cd /c/plainleaf-release-src
+git remote set-url origin https://github.com/yufenfei111/plainleaf.git
+git config http.sslBackend openssl     # 本机 schannel 报吊销检查失败
+git config http.sslVerify false        # 代理没有本地根证书；只作用于这个构建目录
+printf '31927' > proxy_port.txt        # 端口以当时实际值为准
+```
+
+> 注意：构建目录里**不要手工改代码**——每次构建的同步步骤（`git checkout -f`）
+> 会丢弃所有本地改动。要改代码就改主项目、提交推到远端，再跑构建。
 
 ### 产物自检（不要只看 BUILD_EXIT）
 
@@ -97,12 +119,17 @@ storeFile=../plainleaf-release.jks
 ```
 
 `storeFile` 相对于 `android/app/` 解析。
+这两样东西都放在**构建目录**（`C:\plainleaf-release-src\`）下：
+该目录的同步步骤不会删未跟踪文件，所以它们安全；但**别把它们当成唯一一份备份**。
 
 ### 3. 重新构建并确认签名已换
 
+按第二节的流程跑一次构建，然后：
+
 ```bash
-flutter build apk --release
-"$BT/apksigner.bat" verify --print-certs build/app/outputs/flutter-apk/app-release.apk
+BT="C:/Users/雨/AppData/Local/Android/sdk/build-tools/36.1.0"
+"$BT/apksigner.bat" verify --print-certs \
+  C:/plainleaf-release-src/build/app/outputs/flutter-apk/app-release.apk
 ```
 DN 不应再是 `CN=Android Debug`。
 
