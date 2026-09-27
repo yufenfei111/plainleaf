@@ -1,4 +1,4 @@
-import 'package:file_picker/file_picker.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/services.dart' show MissingPluginException;
 
 import '../errors/app_exception.dart';
@@ -26,7 +26,12 @@ abstract class AttachmentPicker {
   Future<PickedAttachment?> pickFile();
 }
 
-/// `file_picker` 实现
+/// `file_selector` 实现（Flutter 官方包）
+///
+/// 选它而不是 `file_picker` 的原因见 pubspec 里的注释（AGP 9 与 win32 双重堵死）。
+/// 有一点很关键：**Android 上它返回的是真实文件路径** —— 原生侧会把选中的文件
+/// 复制到 `{cacheDir}/{uuid}/{原文件名}` 再回传（见其 `FileUtils`），
+/// 所以可以直接 `File(path)` 读它、复制进私有目录；同时文件名也保留了原名。
 class SystemAttachmentPicker implements AttachmentPicker {
   const SystemAttachmentPicker();
 
@@ -34,12 +39,9 @@ class SystemAttachmentPicker implements AttachmentPicker {
   Future<PickedAttachment?> pickFile() async {
     try {
       // 不做类型过滤：本阶段的契约就是"任何文件都能选、都能记进来"。
-      final result = await FilePicker.pickFiles();
-      if (result == null || result.files.isEmpty) return null;
-      final picked = result.files.first;
-      final path = picked.path;
-      if (path == null || path.isEmpty) return null;
-      return PickedAttachment(path: path, name: picked.name);
+      final picked = await openFile();
+      if (picked == null) return null; // 用户取消
+      return PickedAttachment(path: picked.path, name: picked.name);
     } on MissingPluginException {
       // 宿主没注册插件（或跑在测试宿主里）：归成"当前环境不支持"，
       // 而不是把一个 MissingPluginException 甩给用户
