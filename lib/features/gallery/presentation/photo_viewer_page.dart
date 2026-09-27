@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -126,6 +127,14 @@ class PhotoViewerPage extends ConsumerStatefulWidget {
     );
   }
 
+  /// 测试用：重置"本进程已显示过引导"的标记。
+  ///
+  /// 引导标记是 State 里的 static（跨用例会互相影响），没有这个口子，
+  /// 「引导只在首次显示」这条行为根本没法测。
+  @visibleForTesting
+  static void resetHintForTest() =>
+      _PhotoViewerPageState._hintShownInSession = false;
+
   @override
   ConsumerState<PhotoViewerPage> createState() => _PhotoViewerPageState();
 }
@@ -142,6 +151,18 @@ class _PhotoViewerPageState extends ConsumerState<PhotoViewerPage>
   /// 用 ValueNotifier 而不是 setState：位移变化只重建这一层动画包装，
   /// PageView 与里面的图片都不参与重建，拖动过程中才不会掉帧。
   final ValueNotifier<double> _dragOffset = ValueNotifier<double>(0);
+
+  /// 操作引导是否显示中（W18）
+  bool _showHint = false;
+  Timer? _hintTimer;
+
+  /// 引导只在本进程里显示一次。
+  ///
+  /// 为什么不做持久化：那需要引入 `shared_preferences`，而本项目的依赖面已经
+  /// 因为 AGP 9 变得敏感（见 pubspec 里 file_picker 那段）。权衡下来，
+  /// 这是一个 **3.5 秒自动淡出、用户一碰就消失、且不阻塞任何手势**的轻提示，
+  /// 即使每次启动都再看一次也不打扰；对"隔很久再用"的人反而是重新提醒。
+  static bool _hintShownInSession = false;
   bool _dragging = false;
   double _dragFrom = 0;
 
@@ -179,17 +200,63 @@ class _PhotoViewerPageState extends ConsumerState<PhotoViewerPage>
       vsync: this,
       duration: const Duration(milliseconds: 200),
     );
+    // 首帧之后再预取相邻页：此时 context 已挂载，precacheImage 才有意义
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _precacheNeighbors(_index);
+      _maybeShowHint();
+    });
   }
 
   @override
   void dispose() {
+    _hintTimer?.cancel();
     _page.dispose();
     _bounce.dispose();
     _dragOffset.dispose();
     super.dispose();
   }
 
+  /// 预取相邻页的**最小一级**图（thumb），翻过去时不必从零开始解码。
+  ///
+  /// 两个刻意的限制：
+  /// - **只取左右各一张**：翻页是有方向的，用户真正会立刻看到的就是相邻两张；
+  /// - **只取最小一级**：一次预取太多会把 96MB 的 ImageCache 挤满，
+  ///   那恰恰是 `_ViewerItem` 做分级退场要防的事，不能一边防一边制造。
+  void _precacheNeighbors(int index) {
+    for (final i in <int>[index - 1, index + 1]) {
+      if (i < 0 || i >= widget.assets.length) continue;
+      final stages = viewerImageStages(widget.assets[i]);
+      if (stages.isEmpty) continue;
+      precacheImage(
+        FileImage(File(p.join(widget.supportDir, stages.first))),
+        context,
+        // 预取失败（文件缺失/损坏）绝不能影响浏览：静默忽略即可，
+        // 真正翻过去时 _ViewerItem 自己的 errorBuilder 会兜底。
+        onError: (_, _) {},
+      );
+    }
+  }
+
+  /// 首次打开时的操作引导（轻提示，3.5 秒后自动淡出）
+  void _maybeShowHint() {
+    if (_hintShownInSession) return;
+    _hintShownInSession = true;
+    setState(() => _showHint = true);
+    _hintTimer = Timer(const Duration(milliseconds: 3500), () {
+      if (mounted) setState(() => _showHint = false);
+    });
+  }
+
+  /// 用户一动手就把引导收掉 —— 它已经完成使命，继续挂着只会挡视线
+  void _dismissHint() {
+    if (!_showHint) return;
+    _hintTimer?.cancel();
+    setState(() => _showHint = false);
+  }
+
   void _onPointerDown(PointerDownEvent event) {
+    _dismissHint(); // 用户一动手，引导就该让位（它已经完成使命）
     _pointers[event.pointer] = event.position;
     _axis = null;
     _lastMoveAt = null;
@@ -290,15 +357,21 @@ class _PhotoViewerPageState extends ConsumerState<PhotoViewerPage>
 
   /// 翻页落位：过 1/4 屏就翻过去；位移不够但甩得够快也翻；都不满足就回原处。
   /// 200ms / easeOutCubic，与全 App 过渡同口径。
+  ///
+  /// ⚠️ 符号极易搞反（W18 修过一次），这里把推导写清楚：
+  /// 手指**向左**拖 → `dx < 0` → [_dragHorizontally] 里 `_startPixels - dx` 使滚动位置
+  /// **增大** → `_page.page` 增大 → `movedPages > 0` → 想看的是**下一张**（`_startPage + 1`）。
+  /// 反过来手指向右拖才是上一张。此前两个分支的目标写反了，导致落位方向与拖动方向相反，
+  /// 与 PageView 自身的 fling 互相拉扯 —— 表现就是"滑了不翻 / 翻得莫名其妙"。
   void _endHorizontalSwipe() {
     if (!_page.hasClients) return;
     final movedPages = (_page.page ?? _startPage.toDouble()) - _startPage;
     final flung = _velocityX.abs() > _flingVelocity;
     var target = _startPage;
-    if (movedPages <= -_pageFractionThreshold || (flung && movedPages < 0)) {
+    if (movedPages >= _pageFractionThreshold || (flung && movedPages > 0)) {
       target = _startPage + 1;
-    } else if (movedPages >= _pageFractionThreshold ||
-        (flung && movedPages > 0)) {
+    } else if (movedPages <= -_pageFractionThreshold ||
+        (flung && movedPages < 0)) {
       target = _startPage - 1;
     }
     _page.animateToPage(
@@ -389,11 +462,15 @@ class _PhotoViewerPageState extends ConsumerState<PhotoViewerPage>
               PageView.builder(
                 controller: _page,
                 itemCount: widget.assets.length,
-                onPageChanged: (i) => setState(() {
-                  _index = i;
-                  // 翻页后回到未放大；每张页各自持有自己的变换，互不影响
-                  _zoomed = false;
-                }),
+                onPageChanged: (i) {
+                  setState(() {
+                    _index = i;
+                    // 翻页后回到未放大；每张页各自持有自己的变换，互不影响
+                    _zoomed = false;
+                  });
+                  // 翻到新的一页就预取它左右两侧，形成连续预取
+                  _precacheNeighbors(i);
+                },
                 itemBuilder: (context, i) => _ViewerItem(
                   // key 用图片 id：同一张图进出屏幕时复用变换状态，换成另一张必须重置
                   key: ValueKey<int>(widget.assets[i].id),
@@ -448,6 +525,40 @@ class _PhotoViewerPageState extends ConsumerState<PhotoViewerPage>
                   ),
                 ),
               ),
+              // 操作引导（W18）：悬在底部，3.5 秒自动淡出，用户一碰就收。
+              // 用 IgnorePointer 包住是关键 —— 引导期间照样能滑动/缩放/下滑关闭，
+              // 否则一个"教你怎么操作"的提示反而把操作挡住了。
+              if (_showHint)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: IgnorePointer(
+                    child: SafeArea(
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 28),
+                        child: Center(
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: Colors.black54,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 10),
+                              child: Text(
+                                '左右滑动切换 · 下滑关闭 · 双击放大',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: stageForeground(context),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
             ],
           ),
         ),
