@@ -25,6 +25,14 @@ class ExportException extends PlainLeafException {
   const ExportException(super.message);
 }
 
+/// 选择本机文件 / 交给系统打开时的失败（W17 多格式附件）
+///
+/// 与 [ExportException] 分开：这两类失败几乎都是"当前环境不支持"（宿主没注册插件、
+/// 系统里没有能打开该类型的应用），而不是用户数据本身的问题，UI 需要按不同语气提示。
+class PickerException extends PlainLeafException {
+  const PickerException(super.message);
+}
+
 /// 安全相关失败的分类（W14 AES-GCM 加密 / 应用锁）
 enum SecurityErrorKind {
   /// GCM 认证没通过。密码错误、文件被截断、被人改过一个字节，现象完全一致
