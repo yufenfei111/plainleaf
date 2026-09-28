@@ -7,7 +7,7 @@ publish_to: 'none'
 # 历史教训：0.2.0+2 从 W10 末端一路用到 W14（横跨 W11–W14 四个周次的工作量，
 # 含 M3 里程碑；日历时间 9/22–9/26），装上去看不出任何变化，
 # 而且 W10 已经"修正版本号停滞"过一次，靠"记得手改"防不住，只能靠机械校验。
-version: 0.4.0-beta+19
+version: 0.4.0-beta+20
 
 environment:
   sdk: ^3.13.2
@@ -78,6 +78,13 @@ dependencies:
   # W17：非内置预览的类型（文档/压缩包/未知格式）交给系统应用打开。
   # 同样走平台通道，必须真机验证。
   open_filex: ^4.7.0
+
+  # W20 P1-9：音频封面与时长。
+  # **纯 Dart**（自己解析 ID3v2 / MP4 ilst / Vorbis Comments），不走平台通道 ——
+  # 与 file_selector / open_filex / gal 不同，它**不需要真机验证**，
+  # 是本阶段唯一能"本机验完再交付"的 P1 项。`assets.durationMs` 字段
+  # W4 建表时就预留了，这里只是把它填上。
+  audio_metadata_reader: ^1.8.0
 
 dev_dependencies:
   flutter_test:

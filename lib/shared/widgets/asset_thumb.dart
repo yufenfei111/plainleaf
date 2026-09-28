@@ -291,3 +291,20 @@ String? formatFileSize(int? bytes) {
   final text = value >= 10 ? value.round().toString() : value.toStringAsFixed(1);
   return '$text ${units[unit]}';
 }
+
+/// 时长（毫秒）→ `3:45` / `1:02:07`。未知或非正数返回 null。
+///
+/// 分:秒 与 时:分:秒 两档：短视频/歌曲用前者才不啰嗦，而超过一小时用
+/// `63:45` 这种写法会让人读不出来是多少。
+String? formatDuration(int? milliseconds) {
+  if (milliseconds == null || milliseconds <= 0) return null;
+  final totalSeconds = milliseconds ~/ 1000;
+  final seconds = totalSeconds % 60;
+  final minutes = (totalSeconds ~/ 60) % 60;
+  final hours = totalSeconds ~/ 3600;
+  final ss = seconds.toString().padLeft(2, '0');
+  if (hours > 0) {
+    return '$hours:${minutes.toString().padLeft(2, '0')}:$ss';
+  }
+  return '$minutes:$ss';
+}

@@ -510,6 +510,40 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
               ),
             ),
             const Divider(height: 1),
+            // ── 附件类型（W20 P1-10） ────────────────────────────────
+            // 语义是「带**含**该类附件」而不是「只带该类」：一条同时挂图和 PDF 的
+            // 记录在「PDF」下也该出现 —— 用户要找的是"哪条记录里有 PDF"。
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              child: Text(
+                '附件类型',
+                style: tt.labelLarge?.copyWith(color: cs.onSurfaceVariant),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+              child: Wrap(
+                spacing: 8,
+                children: [
+                  FilterChip(
+                    label: const Text('不限'),
+                    selected: draft.attachmentKind == null,
+                    onSelected: (_) =>
+                        _update(draft.copyWith(clearAttachmentKind: true)),
+                  ),
+                  for (final k in _filterableAssetKinds)
+                    FilterChip(
+                      label: Text(k.label),
+                      selected: draft.attachmentKind == k,
+                      // 再点一次同一个 chip = 取消该条件（与「类型」一致）
+                      onSelected: (v) => _update(
+                        draft.copyWith(attachmentKind: k, clearAttachmentKind: !v),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
             // ── 仅看置顶 ────────────────────────────────────────────
             ListTile(
               leading: const Icon(Icons.push_pin_outlined),
@@ -553,6 +587,20 @@ class _FilterSheetState extends ConsumerState<_FilterSheet> {
     );
   }
 }
+
+/// 「附件类型」筛选里可选的类型（W20 P1-10）
+///
+/// 只列用户**按名字能认出来**的那些。刻意不含 [AssetKind.other]：
+/// 它的 label 是「文件」，一个叫"文件"的条件等于"有附件"，
+/// 而"有附件"这个意图用不上筛选 —— 用户想找的是具体某类东西。
+const _filterableAssetKinds = <AssetKind>[
+  AssetKind.image,
+  AssetKind.pdf,
+  AssetKind.document,
+  AssetKind.video,
+  AssetKind.audio,
+  AssetKind.archive,
+];
 
 /// 心情 1–5 档色点（Material 色板映射，避免自定义色过多）
 const _moodColors = <int, Color>{

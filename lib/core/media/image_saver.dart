@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../errors/app_exception.dart';
+import 'attachment_handoff.dart';
 
 /// 保存去向（决定提示文案）
 enum SaveOutcome {
@@ -43,7 +44,15 @@ class SaveResult {
 /// `gal` 走平台通道，`flutter test` 里调用必抛 MissingPluginException。
 /// 保存流程（源文件解析、重名处理、异常映射）要能进 CI，就必须能把实现换掉。
 abstract class ImageSaver {
-  Future<SaveResult> save(String sourcePath);
+  /// [asName]：希望保存成什么名字（通常是附件的**原始文件名**）。
+  ///
+  /// W20 起才有：此前桌面端用 `basename(sourcePath)`，而盘上是 uuid ——
+  /// 用户保存下来的文件叫 `0f3a9c….jpg`，与他在 App 里看到的名字对不上。
+  /// 命名规则与"交给系统打开"共用 `safeDisplayFileName`，
+  /// 两条链路各写一份清理逻辑的结局必然是同一个附件两个名字。
+  ///
+  /// 注意：**平台相册实现会忽略它**（见 [GalleryImageSaver]），这是平台限制。
+  Future<SaveResult> save(String sourcePath, {String? asName});
 }
 
 /// 系统相册实现（Android / iOS）
@@ -51,10 +60,11 @@ class GalleryImageSaver implements ImageSaver {
   const GalleryImageSaver();
 
   @override
-  Future<SaveResult> save(String sourcePath) async {
+  Future<SaveResult> save(String sourcePath, {String? asName}) async {
     try {
-      // 注意 gal 只接受 album / 不支持自定义文件名：相册里的命名由系统决定，
-      // 不要为了"统一命名"再去复制一遍文件。
+      // 注意 gal 只接受 album、**不支持自定义文件名**：相册里的命名由系统决定。
+      // 所以这里刻意忽略 asName，也不为了"统一命名"再复制一遍文件 ——
+      // 在系统相册里"名字"本来就不是用户检索照片的方式（那是相册自己的事）。
       await Gal.putImage(sourcePath);
     } on GalException catch (error) {
       throw ExportException(_describe(error));
@@ -81,10 +91,10 @@ class DesktopImageSaver implements ImageSaver {
   const DesktopImageSaver();
 
   @override
-  Future<SaveResult> save(String sourcePath) async {
+  Future<SaveResult> save(String sourcePath, {String? asName}) async {
     final dir = await getDownloadsDirectory() ??
         await getApplicationDocumentsDirectory();
-    final target = _uniqueTarget(dir, p.basename(sourcePath));
+    final target = _uniqueTarget(dir, targetFileNameFor(sourcePath, asName));
     try {
       await File(sourcePath).copy(target.path);
     } on FileSystemException catch (error) {
@@ -107,15 +117,19 @@ class DesktopImageSaver implements ImageSaver {
   }
 }
 
-/// 测试用内存实现（记录被保存的源路径，不触平台通道）
+/// 测试用内存实现（记录被保存的源路径与请求的展示名，不触平台通道）
 class RecordingImageSaver implements ImageSaver {
   RecordingImageSaver();
 
   final List<String> saved = <String>[];
 
+  /// 与 [saved] 一一对应的展示名（未指定时为 null）
+  final List<String?> requestedNames = <String?>[];
+
   @override
-  Future<SaveResult> save(String sourcePath) async {
+  Future<SaveResult> save(String sourcePath, {String? asName}) async {
     saved.add(sourcePath);
+    requestedNames.add(asName);
     return const SaveResult(outcome: SaveOutcome.gallery, detail: '');
   }
 }

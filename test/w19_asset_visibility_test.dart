@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image/image.dart' as img;
+import 'package:path/path.dart' as p;
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 
 import 'package:plainleaf/app/providers.dart';
@@ -259,15 +260,18 @@ void main() {
       // ③ PDF 不该被当图片渲染 —— 破图图标说明它被错误地喂给了图片解码器
       expect(find.byIcon(Icons.broken_image), findsNothing);
 
-      // ④ 点开 → 交给系统，路径必须是**拼上支持目录**的绝对路径
+      // ④ 点开 → 交给系统，且**文件名与列表标题一致**
+      //    W20 起交出前会按展示名准备副本（盘上是 uuid，直接交出去系统里就是 uuid）
       await tester.tap(find.text('作业第三章.pdf'));
+      await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 400)));
       for (var i = 0; i < 5; i++) {
         await tester.pump(const Duration(milliseconds: 100));
       }
       expect(opener.opened, hasLength(1));
-      expect(opener.opened.single, endsWith('.pdf'));
-      expect(opener.opened.single, contains('media'),
-          reason: '必须是支持目录下的真实绝对路径，不能是库里的相对路径');
+      expect(p.basename(opener.opened.single), '作业第三章.pdf',
+          reason: '系统应用里看到的名字必须与列表标题一致');
+      expect(File(opener.opened.single).existsSync(), isTrue);
 
       // drift 的 QueryStream 关闭会排一个 0ms Timer，不推干净会报 pending timer
       await tester.pumpWidget(const SizedBox.shrink());
@@ -411,4 +415,8 @@ class _FakePathProvider extends PathProviderPlatform {
 
   @override
   Future<String?> getApplicationSupportPath() async => root;
+
+  /// W20：交给系统前会按展示名在临时目录准备副本
+  @override
+  Future<String?> getTemporaryPath() async => root;
 }

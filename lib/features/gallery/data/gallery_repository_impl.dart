@@ -24,6 +24,7 @@ class LocalGalleryRepository implements GalleryRepository {
                 relPath: a.relPath,
                 thumbPath: a.thumbPath,
                 mediumPath: a.mediumPath,
+                originalName: a.originalName,
                 createdAt: a.createdAt,
               ))
           .toList(growable: false);

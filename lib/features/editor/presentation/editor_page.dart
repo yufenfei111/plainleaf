@@ -247,13 +247,20 @@ class _EditorPageState extends ConsumerState<EditorPage> {
   }
 
   /// 打开附件（W17 P0-6）：图片走内置全屏，其余交给系统应用。
+  ///
+  /// W20：交给系统前先按展示名准备副本 —— 否则系统里看到的是盘上的 uuid，
+  /// 与附件条上显示的名字对不上（详情页附件区同此处理，两处共用同一个能力）。
   Future<void> _openAttachment(_AttachedAsset asset, String root) async {
     if (asset.hasBitmap) {
       _openFullscreen(context, asset, root);
       return;
     }
     try {
-      await ref.read(fileOpenerProvider).open(p.join(root, asset.relPath));
+      final path = await ref.read(attachmentHandoffProvider).prepare(
+            sourceAbsPath: p.join(root, asset.relPath),
+            displayName: asset.displayName,
+          );
+      await ref.read(fileOpenerProvider).open(path);
     } on Exception catch (error) {
       if (mounted) _toast('$error');
     }

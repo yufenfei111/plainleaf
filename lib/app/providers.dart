@@ -9,6 +9,7 @@ import 'package:sqlite3/open.dart';
 
 import '../core/db/database.dart';
 import '../core/db/settings_store.dart';
+import '../core/media/attachment_handoff.dart';
 import '../core/media/file_opener.dart';
 import '../core/storage/media_storage.dart';
 import 'theme.dart';
@@ -27,6 +28,14 @@ final mediaStorageProvider =
 /// override 了其中一个、另一个仍走平台通道"的隐蔽失败 —— 能力只有一个，注册也应当只有一处。
 final fileOpenerProvider =
     Provider<FileOpener>((ref) => defaultFileOpener());
+
+/// 把附件以「用户看到的名字」交给系统（W20）
+///
+/// 与 [fileOpenerProvider] 同样是能力类 Provider，**只在这里注册一处** ——
+/// 详情页与编辑器都要用，注册两份会出现"测试只 override 了其中一个"的隐蔽失败。
+/// 它的职责见 `core/media/attachment_handoff.dart`：盘上是 uuid，交出去时要是展示名。
+final attachmentHandoffProvider =
+    Provider<AttachmentHandoff>((ref) => AttachmentHandoff());
 
 /// App 支持目录的绝对路径（W6 性能改造）
 /// 目的：列表卡片要「同步」把库内相对路径拼成绝对路径。
