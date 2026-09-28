@@ -13,6 +13,7 @@ import '../../../app/providers.dart';
 import '../../../core/errors/app_exception.dart';
 import '../../../core/media/asset_kind.dart';
 import '../../../core/media/attachment_picker.dart';
+import '../../../shared/widgets/asset_thumb.dart';
 import '../../../shared/widgets/debouncer.dart';
 import '../../notebooks/presentation/providers/notebooks_providers.dart';
 import '../../timeline/domain/entities/timeline_entry.dart';
@@ -901,17 +902,11 @@ class _AttachmentStrip extends StatelessWidget {
   }
 }
 
-/// 附件格子（W17 起按类型分派）
+/// 附件格子（W17 按类型分派，W19 收口到 [AssetThumb]）
 ///
-/// **图片**走原来的缩略图路径。两处必须同时做到，缺一个就会「要么破图、要么卡」：
-///   ① 相对路径要拼上支持目录 —— 库里存的是 `media/yyyy/mm/xxx.jpg`，
-///      直接 `Image.file` 必然 FileNotFound，表现为全部破图；
-///   ② 优先 thumb 且限制 `cacheWidth` —— 72dp 的格子里解码 4000px 原图，
-///      单张就吃掉几十 MB 解码内存，多图时会明显卡顿。
-///
-/// **其他类型**给类型图标 + 扩展名。注意**不要试图用 Image.file 渲染 PDF**，
-/// 那只会得到一堆破图占位，比直接显示图标更糟。
-/// 图片"刚挂上还没转码"时也落到图标分支，正好充当转码前的占位。
+/// 渲染策略（位图 / 类型徽标 / 失败降级）**统一由 [AssetThumb] 决定**，
+/// 这里只负责"点击交给谁"。此前这套判断在本文件与时间轴各写一份，
+/// 加一种类型或调整一次降级策略都要改两处 —— 迟早漂移。
 class _AttachmentTile extends StatelessWidget {
   const _AttachmentTile({
     required this.asset,
@@ -928,75 +923,19 @@ class _AttachmentTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final base = root;
-    final scheme = Theme.of(context).colorScheme;
-    final bitmapRel = asset.thumbPath ?? asset.relPath;
-    final canShowBitmap =
-        base != null && asset.hasBitmap && bitmapRel.isNotEmpty;
-
     return GestureDetector(
       // 点开：图片进内置全屏，其余交给系统应用（见 EditorPage._openAttachment）
       onTap: base == null ? null : () => onOpen(asset, base),
-      child: canShowBitmap
-          ? Image.file(
-              File(p.join(base, bitmapRel)),
-              width: size,
-              height: size,
-              fit: BoxFit.cover,
-              cacheWidth:
-                  (size * MediaQuery.devicePixelRatioOf(context)).round(),
-              errorBuilder: (context, error, stackTrace) =>
-                  _FileBadge(asset: asset, scheme: scheme),
-            )
-          : _FileBadge(asset: asset, scheme: scheme),
-    );
-  }
-}
-
-/// 非图片附件（以及尚未转码的图片）的格子：类型图标 + 扩展名
-///
-/// 这里显示扩展名而不是完整文件名：72dp 放不下「作业第三章.pdf」，
-/// 截断成半截名字反而更难看。完整名字留给点开后的动作与详情页。
-class _FileBadge extends StatelessWidget {
-  const _FileBadge({required this.asset, required this.scheme});
-
-  final _AttachedAsset asset;
-  final ColorScheme scheme;
-
-  @override
-  Widget build(BuildContext context) {
-    final ext = p.extension(asset.relPath).replaceFirst('.', '').toUpperCase();
-    return Container(
-      width: _AttachmentTile.size,
-      height: _AttachmentTile.size,
-      color: scheme.surfaceContainerHighest,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(_iconFor(asset.kind), size: 24, color: scheme.onSurfaceVariant),
-          const SizedBox(height: 4),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: Text(
-              ext.isEmpty ? '文件' : ext,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 10, color: scheme.onSurfaceVariant),
-            ),
-          ),
-        ],
+      child: AssetThumb.forAsset(
+        kind: asset.kind,
+        size: size,
+        root: base,
+        thumbPath: asset.thumbPath,
+        relPath: asset.relPath,
+        originalName: asset.originalName,
       ),
     );
   }
-
-  static IconData _iconFor(AssetKind kind) => switch (kind) {
-        AssetKind.image => Icons.image_outlined,
-        AssetKind.video => Icons.movie_outlined,
-        AssetKind.audio => Icons.audiotrack_outlined,
-        AssetKind.pdf => Icons.picture_as_pdf_outlined,
-        AssetKind.document => Icons.description_outlined,
-        AssetKind.archive => Icons.folder_zip_outlined,
-        AssetKind.other => Icons.insert_drive_file_outlined,
-      };
 }
 
 /// 全屏看大图：medium 优先 + 按屏幕宽×DPR 限制 cacheWidth（与详情页同一口径）。

@@ -383,6 +383,12 @@ class LocalTimelineRepository implements TimelineRepository {
       notebookSpace: row.notebook?.space,
       firstAssetRelPath: row.firstAsset?.relPath,
       firstAssetThumbPath: row.firstAsset?.thumbPath,
+      // 无附件时保持 null（fromStorage(null) 会退化成 other，那会把"没有附件"
+      // 和"附件类型未知"混成同一件事，卡片就会给空记录画一个文件图标）
+      firstAttachmentKind: row.firstAttachmentKind == null
+          ? null
+          : AssetKind.fromStorage(row.firstAttachmentKind),
+      attachmentCount: row.attachmentCount,
       contentDelta: entry.contentDelta,
     );
   }
@@ -412,26 +418,43 @@ class LocalTimelineRepository implements TimelineRepository {
   }
 
   @override
-  Future<List<EntryAsset>> findAssetsByEntry(int entryId) async {
+  Future<List<EntryAsset>> findAssetsByEntry(int entryId) =>
+      _assetsOf(entryId, allKinds: false);
+
+  @override
+  Future<List<EntryAsset>> findAllAssetsByEntry(int entryId) =>
+      _assetsOf(entryId, allKinds: true);
+
+  /// [findAssetsByEntry] / [findAllAssetsByEntry] 的共用实现。
+  /// 两者的差别**只有一条 SQL 条件**，映射逻辑必须共用 ——
+  /// 复制一份的下场是新字段只补了其中一处（详情页看得到原名、导出看不到）。
+  Future<List<EntryAsset>> _assetsOf(
+    int entryId, {
+    required bool allKinds,
+  }) async {
     final dao = assetsDao;
     if (dao == null) return const <EntryAsset>[];
     try {
-      final rows = await dao.byEntry(entryId);
-      return rows
-          .map(
-            (a) => EntryAsset(
-              id: a.id,
-              sortIndex: a.sortIndex,
-              relPath: a.relPath,
-              thumbPath: a.thumbPath,
-              mediumPath: a.mediumPath,
-              width: a.width,
-              height: a.height,
-            ),
-          )
-          .toList(growable: false);
+      final rows = allKinds
+          ? await dao.allByEntry(entryId)
+          : await dao.byEntry(entryId);
+      return rows.map(_assetToEntity).toList(growable: false);
     } on Exception catch (error) {
-      throw DatabaseException('读取图片失败', cause: error);
+      throw DatabaseException('读取附件失败', cause: error);
     }
   }
+
+  EntryAsset _assetToEntity(Asset a) => EntryAsset(
+        id: a.id,
+        sortIndex: a.sortIndex,
+        relPath: a.relPath,
+        kind: AssetKind.fromStorage(a.kind),
+        thumbPath: a.thumbPath,
+        mediumPath: a.mediumPath,
+        originalName: a.originalName,
+        mimeType: a.mimeType,
+        sizeBytes: a.sizeBytes,
+        width: a.width,
+        height: a.height,
+      );
 }

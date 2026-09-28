@@ -22,3 +22,14 @@ final entryAssetsProvider =
     FutureProvider.family<List<EntryAsset>, int>((ref, entryId) async {
   return ref.watch(timelineRepositoryProvider).findAssetsByEntry(entryId);
 });
+
+/// 记录下的**全部**附件（W19 详情页附件区），按 sortIndex 升序。
+///
+/// 与 [entryAssetsProvider] 的分工不能混：那个是"能翻看的图片"（横向翻页只该拿图片，
+/// 混进 PDF 就会出现翻到一张打不开的页），这个是"这条记录带了哪些文件"。
+/// 两者都保留而不是合成一个带过滤参数的 Provider —— 语义不同，
+/// 合成后每个调用点都要重新回答一次"我要的是哪种"，出错只是时间问题。
+final entryAttachmentsProvider =
+    FutureProvider.family<List<EntryAsset>, int>((ref, entryId) async {
+  return ref.watch(timelineRepositoryProvider).findAllAssetsByEntry(entryId);
+});

@@ -7,8 +7,10 @@ import 'package:path/path.dart' as p;
 ///
 /// **为什么要显式建模类型**：在此之前整条链路是「图片专用」的 ——
 /// 存储层其实不假设格式（`MediaStorage.importFile` 用 `p.extension()` 保留任意扩展名），
-/// 但缩略图管线硬依赖图片解码、展示层有 4 处直接 `Image.file`。
+/// 但缩略图管线硬依赖图片解码，展示层则散着 6 处直接 `Image.file`
+/// （时间轴 / 那年今日 / 相册网格 / 日历弹层 / 详情页 / 编辑器附件条）。
 /// 把「类型」显式建模出来，才能把散落的「图片假设」逐个换成「按类型分派」。
+/// 展示层的那 6 处已在 W19 统一收口到 `AssetThumb`。
 ///
 /// 存库用本枚举的 [name]（`assets.kind` 是 text 字段，默认 `'image'`），
 /// 因此**老数据不需要迁移**即可继续读；遇到不认识的值一律降级为 [AssetKind.other]，
@@ -53,6 +55,21 @@ enum AssetKind {
         AssetKind.pdf =>
           true,
         AssetKind.document || AssetKind.archive || AssetKind.other => false,
+      };
+
+  /// 类型的中文名（W19）。
+  ///
+  /// 放在枚举上而不是 UI 文件里：除了缩略图徽标要用，**Markdown 导出**也要
+  /// （导出清单里写「PDF」比写 `pdf` 更适合给人读）。放在 widget 文件里会让
+  /// `core/exporter` 被迫依赖 Flutter —— 一个纯文本映射不该有这种代价。
+  String get label => switch (this) {
+        AssetKind.image => '图片',
+        AssetKind.video => '视频',
+        AssetKind.audio => '音频',
+        AssetKind.pdf => 'PDF',
+        AssetKind.document => '文档',
+        AssetKind.archive => '压缩包',
+        AssetKind.other => '文件',
       };
 }
 

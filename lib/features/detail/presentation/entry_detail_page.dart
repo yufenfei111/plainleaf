@@ -8,6 +8,8 @@ import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as p;
 
 import '../../../app/providers.dart';
+import '../../../core/media/asset_kind.dart';
+import '../../../shared/widgets/asset_thumb.dart';
 import '../../timeline/domain/entities/entry_asset.dart';
 import '../../timeline/domain/entities/timeline_entry.dart';
 import '../../timeline/presentation/providers/timeline_providers.dart';
@@ -28,10 +30,11 @@ class EntryDetailPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // 三路异步：记录详情、图片资产、支持目录（相对路径的解析基准）。
+    // 四路异步：记录详情、图片资产、全部附件（W19）、支持目录（相对路径的解析基准）。
     // supportDir 顶层取一次往下传，避免每个图片位各自起 FutureBuilder 反复解析。
     final detail = ref.watch(entryDetailProvider(entryId));
     final assets = ref.watch(entryAssetsProvider(entryId));
+    final attachments = ref.watch(entryAttachmentsProvider(entryId));
     final supportDir = ref.watch(supportDirProvider);
 
     return Scaffold(
@@ -82,7 +85,12 @@ class EntryDetailPage extends ConsumerWidget {
             // 明确告知，而不是空白——id 不存在或记录已物理删除都会走到这里。
             return const _NotFoundView();
           }
-          return _DetailBody(entry: entry, assets: assets, supportDir: supportDir);
+          return _DetailBody(
+            entry: entry,
+            assets: assets,
+            attachments: attachments,
+            supportDir: supportDir,
+          );
         },
       ),
     );
@@ -134,16 +142,23 @@ class EntryDetailPage extends ConsumerWidget {
   }
 }
 
-/// 详情正文：图片 + 富文本正文 + 元信息，统一在一个可滚动列里。
+/// 详情正文：图片 + 富文本正文 + 附件 + 元信息，统一在一个可滚动列里。
 class _DetailBody extends StatelessWidget {
   const _DetailBody({
     required this.entry,
     required this.assets,
+    required this.attachments,
     required this.supportDir,
   });
 
   final TimelineEntry entry;
+
+  /// 图片资产（横向翻页用）
   final AsyncValue<List<EntryAsset>> assets;
+
+  /// 全部附件（W19 附件区用；渲染时只取非图片部分，图片已经在上面翻页里了）
+  final AsyncValue<List<EntryAsset>> attachments;
+
   final AsyncValue<String> supportDir;
 
   @override
@@ -170,9 +185,145 @@ class _DetailBody extends StatelessWidget {
             contentDelta: entry.contentDelta,
             plainText: entry.plainText,
           ),
+          // 附件区：只在**确实有非图片附件**时出现，否则整块塌成 0 尺寸。
+          // 图片不进这块——它们已经在上面翻页里展示过，列两遍是重复信息。
+          attachments.when(
+            data: (list) {
+              final files =
+                  list.where((a) => !a.isImage).toList(growable: false);
+              if (files.isEmpty) return const SizedBox.shrink();
+              return _AttachmentArea(
+                files: files,
+                supportDir: supportDir.value,
+              );
+            },
+            loading: () => const SizedBox.shrink(),
+            error: (_, _) => const SizedBox.shrink(),
+          ),
           // 元信息区：日期 / 类型 / 笔记本 / 心情，跟随 AppTheme 排版。
           _MetaArea(entry: entry),
         ],
+      ),
+    );
+  }
+}
+
+/// 非图片附件区（W19）
+///
+/// ## 为什么必须有它
+/// 编辑器里有附件条，但那是**编辑**入口；退出编辑后用户就再也看不到这条记录
+/// 带了什么文件 —— 时间轴卡片只有 64dp 的类型图标，既没有文件名也没有大小。
+/// 对比"记了却找不回来"，**看不见**更糟：用户会以为附件已经丢了。
+///
+/// ## 为什么显示原名与大小
+/// 盘上落的是 `media/2026/09/<uuid>.pdf`。文件名是用户唯一的识别依据
+/// （「作业第三章.pdf」 vs 「毕业论文终稿.pdf」），大小则是"这份是不是我要的那版"
+/// 的辅助判断。这两项都不显示的话，一条 PDF 附件与另一条没有区别。
+class _AttachmentArea extends ConsumerWidget {
+  const _AttachmentArea({required this.files, required this.supportDir});
+
+  final List<EntryAsset> files;
+
+  /// App 支持目录；未解析出来时行仍显示，只是点了没反应
+  final String? supportDir;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: Card(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+              child: Text(
+                '附件 · ${files.length}',
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: cs.onSurfaceVariant,
+                    ),
+              ),
+            ),
+            for (final asset in files)
+              _AttachmentRow(
+                asset: asset,
+                onOpen: supportDir == null
+                    ? null
+                    : () => _open(context, ref, asset, supportDir!),
+              ),
+            const SizedBox(height: 4),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 交给系统应用打开。
+  ///
+  /// 失败只弹 SnackBar，**不阻断页面**：最常见的原因是"这台设备没有能打开
+  /// 该类型的应用"，那是设备现状而不是数据问题，用户看一眼提示即可继续。
+  Future<void> _open(
+    BuildContext context,
+    WidgetRef ref,
+    EntryAsset asset,
+    String root,
+  ) async {
+    try {
+      await ref.read(fileOpenerProvider).open(p.join(root, asset.relPath));
+    } on Exception catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('$error')));
+    }
+  }
+}
+
+/// 附件单行：类型图标 + 原名 + 大小 + 「用系统应用打开」暗示
+class _AttachmentRow extends StatelessWidget {
+  const _AttachmentRow({required this.asset, this.onOpen});
+
+  final EntryAsset asset;
+
+  /// 为 null 时不可点（支持目录还没解析出来）
+  final VoidCallback? onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final size = formatFileSize(asset.sizeBytes);
+    return InkWell(
+      onTap: onOpen,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
+          children: [
+            Icon(assetKindIcon(asset.kind), size: 22, color: cs.primary),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    asset.displayName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                  if (size != null)
+                    Text(
+                      size,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: cs.onSurfaceVariant,
+                          ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Icon(Icons.open_in_new, size: 16, color: cs.onSurfaceVariant),
+          ],
+        ),
       ),
     );
   }
@@ -298,32 +449,37 @@ class _ImageGalleryState extends State<_ImageGallery> {
     if (root == null) return const SizedBox.shrink();
 
     // 限制解码尺寸：屏幕宽度×DPR，让原图（动辄数 MB）只按显示需要解码。
+    // 该口径与 AssetThumb 内部一致（它自己会乘 DPR），这里只在打开全屏时用。
     final cacheWidth =
         (MediaQuery.sizeOf(context).width * MediaQuery.devicePixelRatioOf(context))
             .round();
+    final side = MediaQuery.sizeOf(context).width;
     final items = widget.assets;
 
     return Column(
       children: [
         SizedBox(
-          height: MediaQuery.sizeOf(context).width,
+          height: side,
           child: PageView.builder(
             controller: _pageController,
             itemCount: items.length,
             onPageChanged: (i) => setState(() => _current = i),
             itemBuilder: (context, index) {
               // 必须走 preferredRelPath（medium→thumb→原图），绝不直接解码原图。
-              final abs = p.join(root, items[index].preferredRelPath);
-              final image = Image.file(
-                File(abs),
-                cacheWidth: cacheWidth,
-                fit: BoxFit.contain,
-                errorBuilder: (_, _, _) =>
-                    const Center(child: Icon(Icons.broken_image)),
-              );
+              final rel = items[index].preferredRelPath;
+              final abs = p.join(root, rel);
               final page = GestureDetector(
                 onTap: () => _openFullscreen(context, abs, cacheWidth),
-                child: image,
+                // 本区只收图片（entryAssetsProvider 走 byEntry），兜底态因此恒为
+                // "图坏了"而非"格式不支持" —— AssetThumb 按 kind 判定的降级
+                // 正好给出那个语义。
+                child: AssetThumb(
+                  kind: AssetKind.image,
+                  size: side,
+                  root: root,
+                  bitmapRelPath: rel,
+                  fit: BoxFit.contain,
+                ),
               );
               // 只有第一张接 Hero：与时间轴卡片共享标签，形成「卡片→详情」的连续动画
               if (index != 0) return page;
@@ -351,6 +507,10 @@ class _ImageGalleryState extends State<_ImageGallery> {
   /// W10：即便是全屏**也**限制解码尺寸。屏幕物理宽度通常 1080–1440px，
   /// 而 medium 长边 1600 已绰绰有余；若 preferredRelPath 回退到原图（历史数据未回填），
   /// 不加限制就会把 4000px 数 MB 的原图整个解码进内存，放大时很容易触发 OOM。
+  ///
+  /// 这里**刻意不用 [AssetThumb]**：本视图的入参天然只有图片（来源是
+  /// `entryAssetsProvider`），不需要类型分派；而 AssetThumb 会把内容收进正方形盒，
+  /// 竖图会被压得比满屏更小 —— 全屏看图的尺寸就该由图片自身比例决定。
   void _openFullscreen(BuildContext context, String abs, int cacheWidth) {
     showDialog(
       context: context,

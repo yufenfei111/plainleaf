@@ -1,12 +1,12 @@
-import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:path/path.dart' as p;
 
 import '../../../../app/providers.dart';
+import '../../../../core/media/asset_kind.dart';
+import '../../../../shared/widgets/asset_thumb.dart';
 import '../../../../shared/widgets/skeleton.dart';
 import '../../domain/calendar_month.dart';
 import '../../domain/entities/calendar_entry.dart';
@@ -376,10 +376,9 @@ class _DayEntryTile extends ConsumerWidget {
     final cs = Theme.of(context).colorScheme;
     final root = ref.watch(supportDirProvider).valueOrNull;
     final rel = entry.thumbRelPath;
-    // 先拼成绝对路径再判空：三元里直接写 p.join 依赖空安全提升，
-    // 落成一个局部变量后逻辑与静态分析都更直白。
-    final String? absPath =
-        (rel != null && root != null) ? p.join(root, rel) : null;
+    // 相对路径 + 支持目录原样交给 AssetThumb（W19 收口），此类不再自己拼绝对路径：
+    // 拼接、限解码尺寸、失败降级三件事只有一处实现，才不会各页面表现不一。
+    final canShowThumb = rel != null && root != null;
 
     return ListTile(
       leading: SizedBox(
@@ -387,20 +386,13 @@ class _DayEntryTile extends ConsumerWidget {
         height: 44,
         child: ClipRRect(
           borderRadius: BorderRadius.circular(10),
-          child: absPath != null
-              ? Image.file(
-                  File(absPath),
-                  fit: BoxFit.cover,
-                  // 列表缩略图必须限解码尺寸，否则一张原图就能吃掉几十 MB
-                  cacheWidth:
-                      (44 * MediaQuery.devicePixelRatioOf(context)).round(),
-                  errorBuilder: (_, _, _) => Container(
-                    color: cs.surfaceContainerHighest,
-                    child: Icon(
-                      Icons.broken_image_outlined,
-                      color: cs.onSurfaceVariant,
-                    ),
-                  ),
+          child: canShowThumb
+              ? AssetThumb(
+                  // 数据源（calendar_providers）只带首图，故恒为 image
+                  kind: AssetKind.image,
+                  size: 44,
+                  root: root,
+                  bitmapRelPath: rel,
                 )
               : Container(
                   color: cs.primaryContainer,
