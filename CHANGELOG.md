@@ -417,7 +417,8 @@ W17 解决了"任意格式**能导入**"，但没解决"导入之后**看得见*
 
 ### 验证
 - **258/258 通过**（W18 为 239，本轮 +19），`dart analyze --fatal-infos lib test tool` **0 issue**
-- debug APK `versionCode=19`、`versionName=0.4.0-beta`
+- debug APK `versionCode=19`、`versionName=0.4.0-beta`、166 MB
+- PR #42 → dev（Issue #41），CI `analyze-test` pass（1m43s），**待合并**
 - 详见 `docs/verification-w19.md`
 
 ### 已知限制

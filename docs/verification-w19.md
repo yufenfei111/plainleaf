@@ -1,6 +1,7 @@
 # W19 验收报告 · 附件展示收口与非图片附件的可见性
 
-> 分支 `feat/w19-asset-visibility`（从 dev 尖端切出）。
+> 分支 `feat/w19-asset-visibility`（从 dev `e287fba` 切出），提交 `132b487`。
+> **PR #42 → dev**（Issue #41），CI `analyze-test` **pass（1m43s）**，待合并。
 > 版本号 `0.4.0-beta+19`。
 >
 > 本轮**不是新功能**，而是把 W17「多格式文件支持」的 P0 收尾：
