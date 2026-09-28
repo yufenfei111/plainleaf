@@ -21,6 +21,7 @@ class EntryAsset {
     this.originalName,
     this.mimeType,
     this.sizeBytes,
+    this.durationMs,
     this.width,
     this.height,
   });
@@ -53,6 +54,11 @@ class EntryAsset {
 
   /// 字节数（导入时取源文件大小；历史数据为空）
   final int? sizeBytes;
+
+  /// 音视频时长（毫秒）（W20 P1-9 起对音频填充）。
+  ///
+  /// 字段 W4 建表时就预留了；图片 / 文档等类型恒为 null。
+  final int? durationMs;
 
   final int? width;
   final int? height;

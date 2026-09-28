@@ -57,6 +57,7 @@ class EntriesDao extends DatabaseAccessor<PlainLeafDatabase>
     int? notebookId,
     String? type,
     bool pinnedOnly = false,
+    String? attachmentKind,
   }) {
     final query = select(entries)
       ..where((e) {
@@ -64,6 +65,9 @@ class EntriesDao extends DatabaseAccessor<PlainLeafDatabase>
         if (notebookId != null) cond = cond & e.notebookId.equals(notebookId);
         if (type != null) cond = cond & e.type.equals(type);
         if (pinnedOnly) cond = cond & e.pinned.equals(true);
+        if (attachmentKind != null) {
+          cond = cond & _hasAssetOfKind(attachmentKind);
+        }
         return cond;
       })
       ..orderBy([
@@ -333,10 +337,27 @@ class EntriesDao extends DatabaseAccessor<PlainLeafDatabase>
   /// 而「按筛选全选」的语义是"选中当前条件下**全部**记录"。
   /// 若按已加载的前 100 条来选，用户以为全选了、实际漏掉的是他根本看不见的那部分
   /// —— 这是最危险的一类静默错误（他可能随后就点了"删除"）。
+  /// 「这条记录带有某类附件」的子查询条件（W20 P1-10）
+  ///
+  /// 为什么必须下推成 SQL 子查询、而不是查回来在 Dart 里过滤：
+  /// 时间轴查询**带 LIMIT**，客户端过滤会先截断再筛 ——
+  /// "最近 40 条里有 3 条带 PDF"在筛完只剩 3 条，看起来像"几乎都没有 PDF"。
+  /// 这正是 W7 定下"筛选一律下推 where"那条红线的由来。
+  ///
+  /// 语义是**含**该类附件（不是"只有该类"）：同时带图和 PDF 的记录
+  /// 在「PDF」条件下也应当出现 —— 用户要找的是"哪条记录里有 PDF"。
+  Expression<bool> _hasAssetOfKind(String kind) {
+    final sub = selectOnly(assets)
+      ..addColumns([assets.entryId])
+      ..where(assets.kind.equals(kind) & assets.deleted.equals(false));
+    return entries.id.isInQuery(sub);
+  }
+
   Future<List<int>> selectIdsByFilter({
     int? notebookId,
     String? type,
     bool pinnedOnly = false,
+    String? attachmentKind,
   }) async {
     final rows = await (select(entries)
           ..where((e) {
@@ -346,6 +367,9 @@ class EntriesDao extends DatabaseAccessor<PlainLeafDatabase>
             }
             if (type != null) cond = cond & e.type.equals(type);
             if (pinnedOnly) cond = cond & e.pinned.equals(true);
+            if (attachmentKind != null) {
+              cond = cond & _hasAssetOfKind(attachmentKind);
+            }
             return cond;
           }))
         .get();

@@ -77,6 +77,25 @@ class AssetsDao extends DatabaseAccessor<PlainLeafDatabase>
     });
   }
 
+  /// 回填音频时长（W20 P1-9）
+  ///
+  /// 与 [updateDerived] 分开而不是加参数：那个方法写的是**派生图**字段
+  /// （thumb/medium/宽高/hash），这个方法写的是**文件自身的属性**。
+  /// 混在一个方法里，以后加字段时很容易把"封面的字节数"写进"音频文件大小"。
+  Future<void> updateDuration(int assetId, {required int durationMs}) {
+    return transaction(() async {
+      final row =
+          await (select(assets)..where((a) => a.id.equals(assetId))).getSingle();
+      await (update(assets)..where((a) => a.id.equals(assetId))).write(
+        AssetsCompanion(
+          durationMs: Value(durationMs),
+          updatedAt: Value(DateTime.now()),
+          version: Value(row.version + 1),
+        ),
+      );
+    });
+  }
+
   /// 相册分页：按创建时间倒序（W6 网格滚动性能红线）
   Future<List<Asset>> pagedImages({required int limit, required int offset}) {
     return (select(assets)

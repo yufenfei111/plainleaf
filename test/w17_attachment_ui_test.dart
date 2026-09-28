@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:path/path.dart' as p;
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 
 import 'package:plainleaf/app/providers.dart';
@@ -127,14 +128,20 @@ void main() {
     expect(find.byIcon(Icons.broken_image_outlined), findsNothing,
         reason: 'PDF 不该被当作图片去渲染');
 
-    // ② 点开 → 交给系统应用，且路径正确（拼上了支持目录）
+    // ② 点开 → 交给系统应用，且文件名与附件条上显示的一致
+    //    （W20 起交出前会按展示名准备副本：盘上是 uuid，直接交出去系统里就是 uuid）
     await tester.tap(find.text('PDF'));
+    // 准备副本是**真实文件 I/O**：`pump` 只推进虚拟时钟，等不到它 ——
+    // 不 runAsync 的话断言会发现"点了但什么都没交出去"。
+    await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 400)));
     for (var i = 0; i < 5; i++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
     expect(opener.opened, hasLength(1), reason: '非图片应交给系统应用打开');
     expect(opener.opened.first, endsWith('.pdf'));
-    expect(opener.opened.first, contains('media'));
+    expect(p.basename(opener.opened.first), '作业第三章.pdf',
+        reason: '系统应用里看到的名字必须与附件条上的一致');
 
     // 收尾：销毁树会触发防抖 flush（一次真实写库），
     // 先让 I/O 跑完再交给 tearDown 关库 —— 顺序反了会出现
@@ -200,4 +207,9 @@ class _FakePathProvider extends PathProviderPlatform {
 
   @override
   Future<String?> getApplicationSupportPath() async => root;
+
+  /// W20：交给系统前会按展示名在**临时目录**准备一份副本，
+  /// 这条不实现的话 getTemporaryDirectory 会抛异常，表现为"点开没反应"
+  @override
+  Future<String?> getTemporaryPath() async => root;
 }

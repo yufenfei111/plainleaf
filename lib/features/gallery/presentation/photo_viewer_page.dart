@@ -413,7 +413,11 @@ class _PhotoViewerPageState extends ConsumerState<PhotoViewerPage>
       return;
     }
     try {
-      final result = await ref.read(imageSaverProvider).save(source.path);
+      // W20：带上展示名 —— 桌面端落盘用的是它（盘上是 uuid，用户认得的是原名）。
+      // 平台相册实现会忽略这个名字，那是平台限制，已在 ImageSaver 里注明。
+      final result = await ref
+          .read(imageSaverProvider)
+          .save(source.path, asName: asset.displayName);
       if (!mounted) return;
       messenger.showSnackBar(
         SnackBar(content: Text(result.userMessage), duration: const Duration(seconds: 4)),

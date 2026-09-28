@@ -9,6 +9,7 @@ import '../../../core/db/daos/entries_dao.dart';
 import '../../../core/db/database.dart';
 import '../../../core/errors/app_exception.dart';
 import '../../../core/media/asset_kind.dart';
+import '../../../core/media/audio_metadata_probe.dart';
 import '../../../core/media/mime_lookup.dart';
 import '../../../core/media/thumbnail_pipeline.dart';
 import '../../../core/storage/media_storage.dart';
@@ -44,6 +45,7 @@ class LocalTimelineRepository implements TimelineRepository {
           notebookId: filter.notebookId,
           type: filter.type?.name,
           pinnedOnly: filter.pinnedOnly,
+          attachmentKind: filter.attachmentKind?.name,
         )
         .map((rows) => rows.map(_rowToEntity).toList(growable: false));
   }
@@ -130,6 +132,7 @@ class LocalTimelineRepository implements TimelineRepository {
         notebookId: filter.notebookId,
         type: filter.type?.name,
         pinnedOnly: filter.pinnedOnly,
+        attachmentKind: filter.attachmentKind?.name,
       );
     } on Exception catch (error) {
       throw DatabaseException('读取筛选结果失败', cause: error);
@@ -291,18 +294,39 @@ class LocalTimelineRepository implements TimelineRepository {
       throw DatabaseException('挂接文件失败', cause: error);
     }
 
-    // 缩略图目前只对图片生成（P0 范围）。音视频 / PDF 的缩略图属 P1；
-    // document / archive / other 本就没有缩略图来源 —— 其 thumbPath 为 null，
-    // UI 用类型图标兜底。**null 是合法状态**，链路上已容得下。
+    // 派生处理按类型分派：
+    //   image → 两级缩略图（W6 线，行为不变）
+    //   audio → 时长 + 内嵌封面（W20 P1-9）
+    //   其余  → 没有可用的缩略图来源，thumbPath 保持 null（**null 是合法状态**，
+    //           UI 走类型徽标）。视频抽帧与 PDF 首页渲染需要平台通道依赖，
+    //           见计划文档的 P1-8 与 P2。
     if (kind == AssetKind.image) {
       await _derive(dao, assetId, rel);
+    } else if (kind == AssetKind.audio) {
+      await _deriveAudio(dao, assetId, rel);
     }
     return assetId;
   }
 
   /// 生成两级缩略图并回填（转码在 isolate，失败只降级不抛）
-  Future<void> _derive(AssetsDao dao, int assetId, String originalRel) async {
+  ///
+  /// [sourceAbs]：转码的输入文件。默认是原文件；**音频封面**走它传一张封面临时
+  /// 文件 —— 封面是图，让同一套尺寸/质量控制把它压成两级缩略图，
+  /// 比另写一套缩放逻辑可靠得多。
+  ///
+  /// [writeSourceMeta]：是否把**转码源**的宽高/字节数/hash 回写进资产行。
+  /// 音频封面必须为 `false`：封面只是封面，不是资产本身 ——
+  /// 把封面的字节数写成音频文件的大小，会让"文件大小"那一栏变成谎话。
+  Future<void> _derive(
+    AssetsDao dao,
+    int assetId,
+    String originalRel, {
+    String? sourceAbs,
+    bool writeSourceMeta = true,
+  }) async {
     try {
+      // 派生图总是跟着**原始资产**命名（不是跟着封面临时文件），
+      // 否则清理临时文件后会留下一个意义不明的名字。
       final base = p.basenameWithoutExtension(originalRel);
       final ext = p.extension(originalRel);
       final thumbRel = _media.newRelPath(
@@ -310,12 +334,13 @@ class LocalTimelineRepository implements TimelineRepository {
       final mediumRel = _media.newRelPath(
         MediaKind.medium, '${base}_m', ext.isEmpty ? '.jpg' : ext);
 
-      final originalAbs = (await _media.resolve(originalRel)).path;
+      final inputAbs =
+          sourceAbs ?? (await _media.resolve(originalRel)).path;
       final thumbAbs = (await _media.resolve(thumbRel)).path;
       final mediumAbs = (await _media.resolve(mediumRel)).path;
 
       final derived = await ThumbnailPipeline().generate(
-        sourceAbs: originalAbs,
+        sourceAbs: inputAbs,
         thumbAbs: thumbAbs,
         mediumAbs: mediumAbs,
         thumbRel: thumbRel,
@@ -325,15 +350,56 @@ class LocalTimelineRepository implements TimelineRepository {
         assetId,
         thumbPath: derived.thumbRel,
         mediumPath: derived.mediumRel,
-        width: derived.width,
-        height: derived.height,
-        sizeBytes: derived.sizeBytes,
-        hashSha256: derived.hashSha256,
+        width: writeSourceMeta ? derived.width : null,
+        height: writeSourceMeta ? derived.height : null,
+        sizeBytes: writeSourceMeta ? derived.sizeBytes : null,
+        hashSha256: writeSourceMeta ? derived.hashSha256 : null,
       );
     } on Object {
       // 降级：保留原图，等待 backfillDerived 重跑。
       // 这里必须连 Error 一起兜——损坏图片的解码器抛的是 RangeError，
       // 只 catch Exception 会让"挂一张坏图"直接把流程打断。
+    }
+  }
+
+  /// 音频派生（W20 P1-9）：时长写进 `durationMs`，内嵌封面走缩略图管线
+  ///
+  /// 两者互相独立：没有封面的音频照样有正确的时长，反之亦然。
+  Future<void> _deriveAudio(
+    AssetsDao dao,
+    int assetId,
+    String originalRel,
+  ) async {
+    // 1) 时长 + 封面（读不出就都是 null，不抛）
+    final info = await const AudioMetadataProbe()
+        .probe((await _media.resolve(originalRel)).path);
+    final ms = info.durationMs;
+    if (ms != null && ms > 0) {
+      await dao.updateDuration(assetId, durationMs: ms);
+    }
+
+    // 2) 封面 → 两级缩略图。封面来自 ID3/ilst，尺寸可能是 1500×1500，
+    //    所以必须先落到临时文件再交给管线，而不是直接当 thumb 存下来。
+    final cover = info.coverBytes;
+    if (cover == null || cover.isEmpty) return;
+
+    final tmp = File(p.join(
+      Directory.systemTemp.path,
+      'plainleaf_cover_${assetId}_${p.basename(originalRel)}',
+    ));
+    try {
+      await tmp.writeAsBytes(cover, flush: true);
+      await _derive(dao, assetId, originalRel,
+          sourceAbs: tmp.path, writeSourceMeta: false);
+    } on Object {
+      // 封面写不进去/解码失败都只意味着"这张音频没有缩略图"
+      // （UI 会照旧显示音频图标），不影响时长已经落库。
+    } finally {
+      try {
+        if (tmp.existsSync()) tmp.deleteSync();
+      } on FileSystemException {
+        // 临时文件删不掉交给系统清理，不值得再上一次报错
+      }
     }
   }
 
@@ -454,6 +520,7 @@ class LocalTimelineRepository implements TimelineRepository {
         originalName: a.originalName,
         mimeType: a.mimeType,
         sizeBytes: a.sizeBytes,
+        durationMs: a.durationMs,
         width: a.width,
         height: a.height,
       );

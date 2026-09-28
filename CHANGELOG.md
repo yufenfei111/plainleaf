@@ -425,3 +425,49 @@ W17 解决了"任意格式**能导入**"，但没解决"导入之后**看得见*
 - 三处全屏查看（详情页 / 编辑器 / 相册查看器）**刻意保留**直接 `Image.file`：
   它们只可能收到图片，且 `AssetThumb` 的正方形盒会把竖图压得比满屏更小
 - P1（PDF 首页缩略图 / 音频封面 / 按类型筛选）未启动：都要新增平台通道依赖，须真机验证
+
+## W20 交出文件名一致性 + P1（音频元信息 / 附件类型筛选）（2026-09-28）
+
+### Fixed
+- **附件交给系统后文件名变成一串 uuid**（使用者报）：盘上落的是
+  `media/yyyy/mm/<uuid>.pdf`，此前直接把盘上路径交给系统应用，于是系统标题栏与
+  "另存为"默认名全是 uuid，与列表标题显示的原名对不上。新增
+  `lib/core/media/attachment_handoff.dart`：交出前按展示名准备一份副本
+  （`{临时目录}/plainleaf-handoff/{库内文件名}/{展示名}`），
+  **盘上文件名已等于展示名时不复制**，旧副本 7 天后自动清理。
+  覆盖「详情页附件行 / 编辑器附件条 / 相册查看器保存到设备」三处
+- **展示名清理规则**（`safeDisplayFileName`）：取 basename 后再替掉残留分隔符
+  （`p.basename('/')` 可能原样返回 `/`）、替换 Windows 非法字符与控制字符、
+  去掉结尾的点与空格、按 **UTF-8 字节数**截断并保留扩展名
+  （按字符数截在中文长标题上照样超限，届时得到的是"文件名过长"的写盘失败）
+- `run_pubget.bat` / `run_icons.bat` **写死代理端口**（31927 / 51937）→ 改为读
+  `proxy_port.txt`（与 `run_test.bat` 一致）。端口在同一会话内也会变，
+  写死它会让 `pub get` 报 socket error，看起来像"这个包不存在"
+
+### Added
+- **P1-9 音频封面与时长**：新增依赖 `audio_metadata_reader ^1.8.0`（**纯 Dart**，
+  自己解析 ID3v2 / ilst / Vorbis，不走平台通道 → 本机可验，不需真机）。
+  `lib/core/media/audio_metadata_probe.dart` 读时长与内嵌封面（跑在 isolate，
+  正封面优先）；封面先落临时文件再走**现有**两级缩略图管线；
+  `AssetsDao.updateDuration` 回填 `assets.durationMs`（字段 W4 建表就预留了）。
+  详情页附件行显示「原名 + 时长 · 大小」
+- **P1-10 按附件类型筛选**：`TimelineFilter` 增 `attachmentKind`；
+  `EntriesDao._hasAssetOfKind` 生成 SQL 子查询，在 `watchTimeline` 与
+  `selectIdsByFilter` 两个入口都生效；筛选弹层新增「附件类型」段
+  （不含 `other` —— 一个叫"文件"的条件等于"有附件"，用不上筛选）
+- `ImageSaver.save(asName:)`：保存时用展示名而非盘上文件名
+  （平台相册 `gal` 不支持自定义名，刻意忽略并注明）；`GalleryAsset` 补 `originalName`
+- `formatDuration`（分秒 / 时分秒两档）
+
+### 验证
+- **288/288 通过**（W19 为 258，本轮 +30），`dart analyze --fatal-infos lib test tool` **0 issue**
+- debug APK `versionCode=20`、`versionName=0.4.0-beta`
+- 新增 `test/w20_file_name_consistency_test.dart`、`test/w20_audio_and_filter_test.dart`
+- 详见 `docs/verification-w20.md`；P1 进度与 P1-8 的风险评估记入 `docs/plan-multiformat-assets.md`
+
+### 刻意未做
+- **P1-8 PDF 首页缩略图**：`pdfx` 是平台插件（Windows 还要用 pdfium 改 CMakeLists），
+  **AGP 9 兼容性未知** —— `file_picker` 就是在这一步栽的。改完本机也无法证明能用，
+  推迟到与真机走查同一轮
+- **不做硬链接/符号链接**优化首次打开的复制等待：那会让系统应用的写回
+  （批注、另存）直接改到库内母本，与数据红线冲突

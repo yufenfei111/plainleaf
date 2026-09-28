@@ -248,6 +248,7 @@ class _AttachmentArea extends ConsumerWidget {
             for (final asset in files)
               _AttachmentRow(
                 asset: asset,
+                supportDir: supportDir,
                 onOpen: supportDir == null
                     ? null
                     : () => _open(context, ref, asset, supportDir!),
@@ -261,6 +262,11 @@ class _AttachmentArea extends ConsumerWidget {
 
   /// 交给系统应用打开。
   ///
+  /// W20：**先把文件按展示名准备一份**再交出去。盘上落的是
+  /// `media/yyyy/mm/<uuid>.pdf`，而列表标题显示的是原始文件名；直接把盘上路径
+  /// 交给系统，标题栏与"另存为"的默认名都是那串 uuid —— 用户点了
+  /// 「作业第三章.pdf」，系统却告诉他这是 `0f3a9c…`。
+  ///
   /// 失败只弹 SnackBar，**不阻断页面**：最常见的原因是"这台设备没有能打开
   /// 该类型的应用"，那是设备现状而不是数据问题，用户看一眼提示即可继续。
   Future<void> _open(
@@ -270,7 +276,11 @@ class _AttachmentArea extends ConsumerWidget {
     String root,
   ) async {
     try {
-      await ref.read(fileOpenerProvider).open(p.join(root, asset.relPath));
+      final path = await ref.read(attachmentHandoffProvider).prepare(
+            sourceAbsPath: p.join(root, asset.relPath),
+            displayName: asset.displayName,
+          );
+      await ref.read(fileOpenerProvider).open(path);
     } on Exception catch (error) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context)
@@ -279,11 +289,18 @@ class _AttachmentArea extends ConsumerWidget {
   }
 }
 
-/// 附件单行：类型图标 + 原名 + 大小 + 「用系统应用打开」暗示
+/// 附件单行：缩略图 + 原名 + 时长·大小 + 「用系统应用打开」暗示
 class _AttachmentRow extends StatelessWidget {
-  const _AttachmentRow({required this.asset, this.onOpen});
+  const _AttachmentRow({
+    required this.asset,
+    required this.supportDir,
+    this.onOpen,
+  });
 
   final EntryAsset asset;
+
+  /// App 支持目录；由 [_AttachmentArea] 往下传（与图片区同一口径）
+  final String? supportDir;
 
   /// 为 null 时不可点（支持目录还没解析出来）
   final VoidCallback? onOpen;
@@ -291,14 +308,25 @@ class _AttachmentRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final size = formatFileSize(asset.sizeBytes);
+    final meta = _metaLine;
     return InkWell(
       onTap: onOpen,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         child: Row(
           children: [
-            Icon(assetKindIcon(asset.kind), size: 22, color: cs.primary),
+            // W20 P1-9：音频若有内嵌封面，缩略图管线已把它压成 thumb，
+            // AssetThumb.forAsset 会自动渲染 —— 这里不必判断"有没有封面"。
+            // 没有封面时它照旧显示音频图标，行为与 W19 一致。
+            AssetThumb.forAsset(
+              kind: asset.kind,
+              size: 34,
+              root: supportDir,
+              thumbPath: asset.thumbPath,
+              relPath: asset.relPath,
+              originalName: asset.originalName,
+              borderRadius: BorderRadius.circular(6),
+            ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -310,9 +338,9 @@ class _AttachmentRow extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.bodyMedium,
                   ),
-                  if (size != null)
+                  if (meta != null)
                     Text(
-                      size,
+                      meta,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: cs.onSurfaceVariant,
                           ),
@@ -326,6 +354,18 @@ class _AttachmentRow extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  /// 「3:45 · 4.2 MB」——两者都拿不到时不占一行。
+  ///
+  /// 时长排在大小前面：音频/视频里它才是用户用来确认"是不是这一条"的信息
+  /// （「那个三分钟的就是」），大小更多是辅助。
+  String? get _metaLine {
+    final duration = formatDuration(asset.durationMs);
+    final size = formatFileSize(asset.sizeBytes);
+    // `?x` 是空安全元素语法：拿到 null 就整项不参与，比 if 少一层噪声
+    final parts = <String>[?duration, ?size];
+    return parts.isEmpty ? null : parts.join(' · ');
   }
 }
 
