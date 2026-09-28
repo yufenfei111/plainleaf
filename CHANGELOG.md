@@ -370,3 +370,57 @@ pubspec 一致——不一致直接红，这是 W14 那次版本号漂移事故�
 - 产物核对：versionCode=15、versionName=0.4.0-beta、minSdk=24、targetSdk=36、
   label=素页；权限含 INTERNET / USE_BIOMETRIC / WRITE_EXTERNAL_STORAGE(max 29) / USE_FINGERPRINT
 - 签名当前为 debug（无 `key.properties`，符合降级预期）；正式签名与真机走查待执行
+
+## W17 / W18 归档说明（如实记录，不补写）
+
+这两周未在此单独成节。交付记录当时写在提交信息与工作日志里，CHANGELOG 没跟上 ——
+**这是文档侧的欠账，不是内容缺失**。需要追溯时看：
+
+| 周次 | 内容 | 合并提交 | 佐证材料 |
+|---|---|---|---|
+| W17 | 多格式文件支持（P0：任意文件可导入 / 备份 / 恢复 / 交给系统打开） | PR #39 → dev（`47a3479`） | `docs/plan-multiformat-assets.md`、`test/w17_*.dart` |
+| W18 | 相册全屏浏览（修复落位方向 bug + 补 6 个用例 + 预取相邻页 + 首次引导） | PR #40 → dev（`e287fba`） | `test/w18_gallery_viewer_test.dart` |
+
+以后每周收尾顺手补一节，别再攒。
+
+## W19 附件展示收口与非图片附件的可见性（2026-09-28）
+
+W17 解决了"任意格式**能导入**"，但没解决"导入之后**看得见**"。本轮补齐 W17 P0 的最后一环。
+三个洞的共同点是**不会报错、不会崩溃、测试也不红** —— 只是用户看不见。
+
+### Added
+- `lib/shared/widgets/asset_thumb.dart`：附件渲染的统一入口。位图来源的挑选集中在
+  `AssetThumb.bitmapFor()`（图片可回退原图、**其他类型只认 thumb**，否则会把 PDF
+  二进制喂给图片解码器），并导出 `assetKindIcon` / `assetBadgeLabel` / `formatFileSize`
+- 时间轴卡片新增第三种分支：**有附件但都不是图片时显示附件类型图标**
+  （此前落到"记录类型图标"，与"没有附件"长得一模一样）；附件数 > 1 时显示数量角标
+- 详情页新增附件区：非图片附件列出**原始文件名 + 大小**，点击交给系统应用打开。
+  在此之前退出编辑后就再也看不到这条记录挂了什么文件
+- `EntriesDao._rowsFor` 不再在 SQL 里过滤 `kind='image'`，一次查询同时算出
+  首图 / 附件总数 / 首个附件类型；`TimelineRow` 与 `TimelineEntry` 新增两个字段
+  （`firstAsset` 语义未变，故"那年今日""日历"两个消费方零影响）
+- `AssetKind.label`（类型中文名）—— 放在枚举上而非 UI 文件：Markdown 导出也要用，
+  而 `core/exporter` 不该因此依赖 Flutter
+- `TimelineRepository.findAllAssetsByEntry` + `entryAttachmentsProvider`：
+  与"只给图片"的既有查询**并存而非合并**（"能翻看的图片"与"带了哪些文件"语义不同）
+
+### Fixed
+- **`MarkdownExporter` 补齐附件清单**：类注释自 W5 起就写着"图片附件以附件清单形式列出"，
+  而实现里根本没有这段（W17 已在测试注释里记明未擅自补功能）。
+  现在实现与注释一致，且清单**不限图片类型**，含类型 + 原始文件名 + 相对路径
+- **六处 `Image.file` 收口**（原计划盘到 4 处，实现时又找出 2 处）：
+  时间轴 / 那年今日 / 相册网格 / 日历弹层 / 详情页翻页 / 编辑器附件条。
+  此前同一条 PDF 在不同页面表现不同（文件图标 vs 破图占位），任何显示策略调整都要改六遍
+- `fileOpenerProvider` 从 editor 的 providers 挪到 `lib/app/providers.dart`：
+  详情页也要用它，就地再注册一份会造成"测试只 override 了其中一个、另一个仍走平台通道"
+  的隐蔽失败
+
+### 验证
+- **258/258 通过**（W18 为 239，本轮 +19），`dart analyze --fatal-infos lib test tool` **0 issue**
+- debug APK `versionCode=19`、`versionName=0.4.0-beta`
+- 详见 `docs/verification-w19.md`
+
+### 已知限制
+- 三处全屏查看（详情页 / 编辑器 / 相册查看器）**刻意保留**直接 `Image.file`：
+  它们只可能收到图片，且 `AssetThumb` 的正方形盒会把竖图压得比满屏更小
+- P1（PDF 首页缩略图 / 音频封面 / 按类型筛选）未启动：都要新增平台通道依赖，须真机验证

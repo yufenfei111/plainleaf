@@ -8,10 +8,27 @@ part 'entries_dao.g.dart';
 /// 时间轴行：entries + 首图 + 笔记本，一条时间轴卡片所需数据一次拉齐
 class TimelineRow {
   final Entry entry;
+
+  /// 首**图**（`kind='image'`，按 sortIndex 升序的第一个）。
+  /// 无图返回 null —— 注意这不等于"没有附件"：非图片附件时它同样是 null，
+  /// 要区分请看 [attachmentCount] / [firstAttachmentKind]。
   final Asset? firstAsset;
+
   final Notebook? notebook;
 
-  const TimelineRow({required this.entry, this.firstAsset, this.notebook});
+  /// 该条目的全部附件数（含非图片）（W19）
+  final int attachmentCount;
+
+  /// 首个附件（任意类型，按 sortIndex）的类型字符串；无附件为 null（W19）
+  final String? firstAttachmentKind;
+
+  const TimelineRow({
+    required this.entry,
+    this.firstAsset,
+    this.notebook,
+    this.attachmentCount = 0,
+    this.firstAttachmentKind,
+  });
 }
 
 /// 日历/回忆用的一条轻量命中：只有主键与日期
@@ -58,27 +75,36 @@ class EntriesDao extends DatabaseAccessor<PlainLeafDatabase>
     return query.watch().asyncMap(_rowsFor);
   }
 
-  /// 组装时间轴行：一次把首图与笔记本查齐（N 次 tao dao → 3 次查询）
+  /// 组装时间轴行：一次把首图、附件聚合与笔记本查齐（N 条 → 3 次查询）
   ///
   /// 抽成单独方法是因为 W12 起有了第二个消费方（那年今日）：
   /// 与其把 map / 首图归并复制一遍，不如共用同一套组装逻辑。
+  ///
+  /// W19：附件查询**不再在 SQL 里过滤 `kind='image'`**。原因是时间轴卡片需要知道
+  /// 「有没有附件、有几个、是什么类型」——一条只挂着 PDF 的记录，在只查图片的
+  /// 旧实现下与"完全没附件"长得一模一样，用户看不出自己带过东西。
+  /// 仍然是一次查询：全取回来后按条目分组（个人库量级下比再加两条聚合查询更省）。
   Future<List<TimelineRow>> _rowsFor(List<Entry> entryList) async {
     if (entryList.isEmpty) return const <TimelineRow>[];
     final ids = entryList.map((e) => e.id).toList();
 
     final assetRows = await (select(assets)
-          ..where((a) =>
-              a.entryId.isIn(ids) &
-              a.deleted.equals(false) &
-              a.kind.equals('image'))
+          ..where((a) => a.entryId.isIn(ids) & a.deleted.equals(false))
           ..orderBy([(a) => OrderingTerm.asc(a.sortIndex)]))
         .get();
     final notebookRows = await select(notebooks).get();
 
-    final firstAssetByEntry = <int, Asset>{};
+    // 首图与"首个附件"要分开收集：混合附件时两者可能指向不同文件，
+    // 卡片缩略图位只认图片，类型徽标才用得上任意类型的第一个。
+    final firstImageByEntry = <int, Asset>{};
+    final firstAnyByEntry = <int, Asset>{};
+    final countByEntry = <int, int>{};
     for (final a in assetRows) {
       final eid = a.entryId;
-      if (eid != null) firstAssetByEntry.putIfAbsent(eid, () => a);
+      if (eid == null) continue;
+      firstAnyByEntry.putIfAbsent(eid, () => a);
+      countByEntry[eid] = (countByEntry[eid] ?? 0) + 1;
+      if (a.kind == 'image') firstImageByEntry.putIfAbsent(eid, () => a);
     }
     final notebookById = {for (final n in notebookRows) n.id: n};
 
@@ -86,8 +112,10 @@ class EntriesDao extends DatabaseAccessor<PlainLeafDatabase>
       for (final e in entryList)
         TimelineRow(
           entry: e,
-          firstAsset: firstAssetByEntry[e.id],
+          firstAsset: firstImageByEntry[e.id],
           notebook: e.notebookId == null ? null : notebookById[e.notebookId!],
+          attachmentCount: countByEntry[e.id] ?? 0,
+          firstAttachmentKind: firstAnyByEntry[e.id]?.kind,
         ),
     ];
   }

@@ -1,16 +1,16 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:path/path.dart' as p;
 
 import '../domain/entities/timeline_entry.dart';
 import '../domain/entities/timeline_filter.dart';
 import '../domain/timeline_grouping.dart';
 import '../../../app/providers.dart';
+import '../../../core/media/asset_kind.dart';
+import '../../../shared/widgets/asset_thumb.dart';
 import '../../../shared/widgets/empty_state.dart';
 import '../../../shared/widgets/skeleton.dart';
 import '../../detail/presentation/entry_detail_page.dart' show entryThumbHeroTag;
@@ -852,37 +852,97 @@ class _DayHeader extends StatelessWidget {
   }
 }
 
-/// 列表缩略图（W6 性能改造，W7 沿用）
-/// 三处关键点，缺一个都会让滑动掉帧：
-/// 1. **优先用 thumb 而不是原图**：52dp 的框里解码 4000×3000 的原图，
-///    单张就吃掉几十 MB 解码内存，是列表卡顿的头号来源；
-/// 2. **cacheWidth 限制解码尺寸**：即使回退到原图，也只按显示尺寸×DPR 解码；
-/// 3. **路径同步拼接**：root 由上层 provider 给，卡片内不再发起 Future。
-class _ThumbTile extends StatelessWidget {
-  const _ThumbTile({required this.rel, required this.root, required this.size});
+/// 列表缩略图（W6 性能改造；W19 收口到 [AssetThumb]，并补上"非图片附件"的分支）
+///
+/// 三种情况，此前只有前两种：
+///   ① 有首图 → 渲染位图（优先 thumb）
+///   ② 无附件 → 记录类型图标（日记本 / 闪电…），表示"这条是干什么的"
+///   ③ **有附件但都不是图片** → 附件类型图标（如 PDF）—— 新增。
+///      在此之前这种情况落到 ②，卡片上完全看不出记录带了文件，
+///      用户会以为附件丢了。
+///
+/// 缩略图的性能约束（优先 thumb、必须限 cacheWidth、路径同步拼接）已全部
+/// 下沉进 [AssetThumb]，这里不再重复实现。
+class _ThumbSlot extends StatelessWidget {
+  const _ThumbSlot({
+    required this.entry,
+    required this.thumbRel,
+    required this.root,
+  });
 
-  final String rel;
+  final TimelineEntry entry;
+
+  /// 首图相对路径（thumb 优先）；为 null 表示这张卡片没有图片可显示
+  final String? thumbRel;
   final String? root;
-  final double size;
+
+  static const double size = 64;
 
   @override
   Widget build(BuildContext context) {
-    if (root == null) {
-      return const SizedBox.expand();
+    final rel = thumbRel;
+    if (rel != null) {
+      return Hero(
+        // Hero：卡片缩略图飞向详情页大图，形成连续的空间感（W10）
+        tag: entryThumbHeroTag(entry.id),
+        // 首图必定是图片（AssetsDao 按 kind='image' 选），直接给位图路径最省一层推断
+        child: AssetThumb(
+          kind: AssetKind.image,
+          size: size,
+          root: root,
+          bitmapRelPath: rel,
+        ),
+      );
     }
-    final dpr = MediaQuery.devicePixelRatioOf(context);
-    return Image.file(
-      File(p.join(root!, rel)),
-      fit: BoxFit.cover,
-      cacheWidth: (size * dpr).round(),
-      // W10：此前失败态是「空白色块」——用户看到卡片左上空一块，
-      // 既不知道那是图片，也不知道它为什么空。给出破图图标，至少是可归因的状态。
-      errorBuilder: (_, _, _) => Container(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        child: Icon(
-          Icons.broken_image_outlined,
-          size: 20,
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
+
+    final kind = entry.firstAttachmentKind;
+    if (kind != null && entry.hasAttachments) {
+      return AssetThumb(
+        kind: kind,
+        size: size,
+        root: root,
+        // 非图片没有位图来源（P1 之前），一律走类型徽标
+        bitmapRelPath: null,
+      );
+    }
+
+    return Icon(
+      switch (entry.type) {
+        EntryType.diary => Icons.edit_note,
+        EntryType.quick => Icons.bolt,
+        EntryType.todo => Icons.check_circle_outline,
+        EntryType.note => Icons.sticky_note_2_outlined,
+      },
+      color: Theme.of(context).colorScheme.primary,
+    );
+  }
+}
+
+/// 附件数量角标（仅 >1 时显示）
+///
+/// 为什么不显示 1：单张图片缩略图本身已经说明"有一个附件"，那个「1」纯属噪声。
+/// 而从 2 开始，"还有你看不到的东西"是缩略图表达不了的信息 —— 正是角标该补的。
+class _AttachmentCountBadge extends StatelessWidget {
+  const _AttachmentCountBadge({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+      decoration: BoxDecoration(
+        color: scheme.primary,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        '$count',
+        style: TextStyle(
+          fontSize: 10,
+          height: 1.3,
+          fontWeight: FontWeight.w600,
+          color: scheme.onPrimary,
         ),
       ),
     );
@@ -979,33 +1039,36 @@ class _EntryCardState extends ConsumerState<_EntryCard>
                 _SelectBadge(selected: selected),
                 const SizedBox(width: 10),
               ],
-              Container(
-                // W15 布局升级：52 → 64。52 在 3x 屏上只有 156 物理像素，
-                // 照片内容基本看不清，用户得点进去才知道是哪张；
-                // 64 是"能认出画面"的最小档，卡片高度只多 12，一屏仍放得下三张。
-                width: 64,
-                height: 64,
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primaryContainer,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: thumbRel != null
-                    // Hero：卡片缩略图飞向详情页大图，形成连续的空间感（W10）
-                    ? Hero(
-                        tag: entryThumbHeroTag(entry.id),
-                        child: _ThumbTile(
-                            rel: thumbRel, root: widget.root, size: 64),
-                      )
-                    : Icon(
-                        switch (entry.type) {
-                          EntryType.diary => Icons.edit_note,
-                          EntryType.quick => Icons.bolt,
-                          EntryType.todo => Icons.check_circle_outline,
-                          EntryType.note => Icons.sticky_note_2_outlined,
-                        },
-                        color: Theme.of(context).colorScheme.primary,
+              Stack(
+                // 角标叠在缩略图右下角。Stack 只吃非定位子节点的尺寸，
+                // 所以这里的 64×64 仍由容器决定，角标不会把格子撑大。
+                children: [
+                  Container(
+                    // W15 布局升级：52 → 64。52 在 3x 屏上只有 156 物理像素，
+                    // 照片内容基本看不清，用户得点进去才知道是哪张；
+                    // 64 是"能认出画面"的最小档，卡片高度只多 12，一屏仍放得下三张。
+                    width: 64,
+                    height: 64,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: _ThumbSlot(
+                      entry: entry,
+                      thumbRel: thumbRel,
+                      root: widget.root,
+                    ),
+                  ),
+                  if (entry.attachmentCount > 1)
+                    Positioned(
+                      right: 3,
+                      bottom: 3,
+                      child: _AttachmentCountBadge(
+                        count: entry.attachmentCount,
                       ),
+                    ),
+                ],
               ),
               const SizedBox(width: 12),
               Expanded(

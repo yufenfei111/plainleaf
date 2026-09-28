@@ -1,12 +1,11 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:path/path.dart' as p;
 
 import '../../../app/providers.dart';
+import '../../../core/media/asset_kind.dart';
+import '../../../shared/widgets/asset_thumb.dart';
 import '../../../shared/widgets/empty_state.dart';
 import '../../../shared/widgets/skeleton.dart';
 import '../domain/entities/gallery_asset.dart';
@@ -259,35 +258,21 @@ class _GridTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final rel = asset.thumbPath ?? asset.relPath;
-    final dpr = MediaQuery.devicePixelRatioOf(context);
-    final placeholder = Container(
-      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-    );
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(8),
-      child: GestureDetector(
-        onTap: onTap,
-        onLongPress: onLongPress,
-        // 碎图占位必须是「可点的」：图片加载失败时 Image 自身会塌成 0×0，
-        // deferToChild 的默认行为会让整格丢失命中，用户点了没反应。
-        behavior: HitTestBehavior.opaque,
-        child: SizedBox(
-          width: size,
-          height: size,
-          child: root == null
-            // 支持目录还没解析出来（只有启动时那几十毫秒）：先占位，别拼空基准路径
-            ? placeholder
-            : Image.file(
-                File(p.join(root!, rel)),
-                fit: BoxFit.cover,
-                cacheWidth: (size * dpr).round(),
-                errorBuilder: (_, _, _) => Container(
-                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                  child: const Icon(Icons.broken_image_outlined),
-                ),
-              ),
-        ),
+    return GestureDetector(
+      onTap: onTap,
+      onLongPress: onLongPress,
+      // 碎图占位必须是「可点的」：图片加载失败时 Image 自身会塌成 0×0，
+      // deferToChild 的默认行为会让整格丢失命中，用户点了没反应。
+      // AssetThumb 内部始终给出 size×size 的盒子，正是为了让这条成立。
+      behavior: HitTestBehavior.opaque,
+      child: AssetThumb(
+        // 相册的数据源（AssetsDao.pagedImages）本身就只查 `kind='image'`，
+        // 所以这里恒为图片。参数仍显式写出，免得读代码的人以为漏了类型判断。
+        kind: AssetKind.image,
+        size: size,
+        root: root,
+        bitmapRelPath: asset.thumbPath ?? asset.relPath,
+        borderRadius: BorderRadius.circular(8),
       ),
     );
   }

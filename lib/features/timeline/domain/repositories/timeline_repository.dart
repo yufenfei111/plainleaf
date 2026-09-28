@@ -99,4 +99,11 @@ abstract interface class TimelineRepository {
   /// 条目下的全部图片资产，sortIndex 升序（W8 详情页图片浏览）。
   /// assetsDao 未注入（纯文本场景）时返回空列表而非抛错。
   Future<List<EntryAsset>> findAssetsByEntry(int entryId);
+
+  /// 条目下的**全部**附件，不限类型，sortIndex 升序（W19 详情页附件区 / 导出清单）。
+  ///
+  /// 与 [findAssetsByEntry] 并存而不是替换：它们的语义不同 ——
+  /// 前者是"这个条目能翻看的图片"，后者是"这个条目带了哪些文件"。
+  /// 详情页的横向翻页只该拿到图片，附件区则必须看到 PDF / Word。
+  Future<List<EntryAsset>> findAllAssetsByEntry(int entryId);
 }

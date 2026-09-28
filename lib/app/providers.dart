@@ -9,12 +9,24 @@ import 'package:sqlite3/open.dart';
 
 import '../core/db/database.dart';
 import '../core/db/settings_store.dart';
+import '../core/media/file_opener.dart';
 import '../core/storage/media_storage.dart';
 import 'theme.dart';
 
 /// 媒体私有目录服务（W4；路径约定 §4.3）
 final mediaStorageProvider =
     Provider<MediaStorage>((ref) => MediaStorage());
+
+/// 交给系统应用打开文件（W17 P0-6）
+///
+/// 测试 override 成 `RecordingFileOpener`，断言"点开文件时把正确路径交了出去"，
+/// 而不必真的唤起系统应用。
+///
+/// **W19 从 editor 的 providers 挪到这里**：此前只有编辑器要用，现在详情页的
+/// 附件区也要"点开交给系统"。留两份 `Provider<FileOpener>` 会出现"测试只
+/// override 了其中一个、另一个仍走平台通道"的隐蔽失败 —— 能力只有一个，注册也应当只有一处。
+final fileOpenerProvider =
+    Provider<FileOpener>((ref) => defaultFileOpener());
 
 /// App 支持目录的绝对路径（W6 性能改造）
 /// 目的：列表卡片要「同步」把库内相对路径拼成绝对路径。

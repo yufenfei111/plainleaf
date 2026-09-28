@@ -1,11 +1,10 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:path/path.dart' as p;
 
 import '../../../../app/providers.dart';
+import '../../../../core/media/asset_kind.dart';
+import '../../../../shared/widgets/asset_thumb.dart';
 import '../../../../shared/widgets/skeleton.dart';
 import '../providers/on_this_day_provider.dart';
 
@@ -156,10 +155,11 @@ class _OnThisDayRow extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     // 先落到局部变量再判空：字段本身无法参与空安全提升，
     // 直接写 `root != null ? p.join(root, ...)` 在静态分析里过不了。
+    // W19 起不再自己拼绝对路径 —— 相对路径 + 支持目录原样交给 AssetThumb，
+    // 由它统一处理拼接、限尺寸与失败降级（这里是第 N 个调用点了）。
     final baseDir = root;
     final thumbRel = item.thumbRelPath;
-    final String? absPath =
-        (thumbRel != null && baseDir != null) ? p.join(baseDir, thumbRel) : null;
+    final canShowThumb = thumbRel != null && baseDir != null;
 
     return InkWell(
       // 找不到 router 的场合（如纯组件测试）静默跳过，不让导航把整棵树带崩
@@ -173,21 +173,14 @@ class _OnThisDayRow extends StatelessWidget {
               height: 44,
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(10),
-                child: absPath != null
-                    ? Image.file(
-                        File(absPath),
-                        fit: BoxFit.cover,
-                        // 缩略图必须限解码尺寸，否则 44dp 的框里解原图纯属浪费
-                        cacheWidth: (44 *
-                                MediaQuery.devicePixelRatioOf(context))
-                            .round(),
-                        errorBuilder: (_, _, _) => Container(
-                          color: cs.surfaceContainerHighest,
-                          child: Icon(
-                            Icons.broken_image_outlined,
-                            color: cs.onSurfaceVariant,
-                          ),
-                        ),
+                child: canShowThumb
+                    ? AssetThumb(
+                        // 「那年今日」的数据源（EntriesDao.watchOnThisDay）只带**首图**，
+                        // 所以这里恒为 image；非图片附件在这张卡片上不参与展示。
+                        kind: AssetKind.image,
+                        size: 44,
+                        root: baseDir,
+                        bitmapRelPath: thumbRel,
                       )
                     : Container(
                         color: cs.primaryContainer,
