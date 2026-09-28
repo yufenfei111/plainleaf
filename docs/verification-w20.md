@@ -1,6 +1,10 @@
 # W20 验收报告 · 交出文件名一致性 + P1（音频元信息 / 附件类型筛选）
 
-> 分支 `feat/w20-handoff-and-p1`（从 dev 尖端切出）。
+> 分支 `feat/w20-handoff-and-p1`（提交 `09b91b2`，**从 W19 分支切出** ——
+> 本轮建立在 W19 的 `AssetThumb` 之上）。
+> **PR #44 → `feat/w19-asset-visibility`**（Issue #43），堆叠在 PR #42（W19）之上。
+> ⚠️ CI 只在 PR 目标是 `main`/`dev` 时触发，因此 #44 的 checks 为空 ——
+> 本地已跑过与 CI 完全相同的命令；#42 合并后把 #44 的 base 改成 `dev` 即可让 CI 跑。
 > 版本号 `0.4.0-beta+20`。
 >
 > 本轮两件事：① 修掉使用者报的「附件交给系统后文件名变成一串 uuid」；
