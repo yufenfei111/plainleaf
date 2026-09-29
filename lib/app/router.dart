@@ -9,6 +9,8 @@ import '../features/editor/presentation/trash_page.dart';
 import '../features/search/presentation/search_page.dart';
 import '../features/gallery/presentation/gallery_page.dart';
 import '../features/notebooks/presentation/notebooks_page.dart';
+import '../features/onboarding/presentation/manual_page.dart';
+import '../features/onboarding/presentation/onboarding_page.dart';
 import '../features/settings/presentation/settings_page.dart';
 import '../features/study/presentation/study_page.dart';
 import '../features/timeline/presentation/timeline_page.dart';
@@ -33,8 +35,14 @@ import 'transitions.dart';
 /// W12 信息架构调整：底部 Tab 由 5 个减为 4 个（时间轴/相册/学习/我的），
 /// 原「笔记本」不再是并列一级目的地 —— 它是记录的一个维度，入口收进「我的」。
 /// /notebooks 因此从 shell 的 branch 提升为普通顶层路由，仍可 push 进入。
-GoRouter buildAppRouter() => GoRouter(
-  initialLocation: '/timeline',
+/// [showOnboarding] 为 true 时首屏是新手引导（W22）。
+///
+/// 为什么由外面传进来、而不是在这里读配置：路由构建必须是**同步**的，
+/// 而读 `settings_kv` 是异步的。`main.dart` 启动阶段本来就有一段 async 初始化
+/// （种子数据 + 外观预读），顺手把标记读出来传进来；路由这边保持纯函数，
+/// 测试里也就能直接构造"引导态"与"已看过"两种路由，不必去动数据库。
+GoRouter buildAppRouter({bool showOnboarding = false}) => GoRouter(
+  initialLocation: showOnboarding ? '/onboarding' : '/timeline',
   routes: [
     GoRoute(
       path: '/editor',
@@ -83,6 +91,18 @@ GoRouter buildAppRouter() => GoRouter(
       path: '/calendar',
       pageBuilder: (context, state) =>
           fadeSlidePage(state, const CalendarPage()),
+    ),
+    // 新手引导（W22）：只在首次启动时作为 initialLocation 出现。
+    // 放在 shell 之外 —— 引导要全屏沉浸，不该显示底部导航栏。
+    GoRoute(
+      path: '/onboarding',
+      builder: (_, _) => const OnboardingPage(),
+    ),
+    // 操作手册（W22）：常驻可查，入口在「我的」Tab。
+    GoRoute(
+      path: '/manual',
+      pageBuilder: (context, state) =>
+          fadeSlidePage(state, const ManualPage()),
     ),
     StatefulShellRoute.indexedStack(
       builder: (context, state, shell) => HomePage(shell: shell),

@@ -12,6 +12,7 @@ import 'app/splash_transition.dart';
 import 'app/theme.dart';
 import 'core/db/database.dart';
 import 'core/db/seed.dart';
+import 'core/db/settings_store.dart';
 import 'features/settings/presentation/app_lock_gate.dart';
 
 void main() async {
@@ -30,6 +31,9 @@ void main() async {
   // 「默认主题 → 恢复主题」的那一次重绘闪屏。失败一律降级为空快照，绝不让读
   // 配置失败变成启动失败。
   final appearance = await readAppearanceSnapshot(db);
+  // 新手引导（W22）：同在启动阶段读一次。放到这里而不是首帧之后再判断，
+  // 是为了让引导直接成为**首屏**——否则会先闪一下时间轴再跳走。
+  final showOnboarding = await _shouldShowOnboarding(db);
 
   runApp(
     ProviderScope(
@@ -37,9 +41,24 @@ void main() async {
         dbProvider.overrideWithValue(db),
         initialAppearanceProvider.overrideWithValue(appearance),
       ],
-      child: const PlainLeafApp(),
+      child: PlainLeafApp(
+        routerConfig: buildAppRouter(showOnboarding: showOnboarding),
+      ),
     ),
   );
+}
+
+/// 是否显示新手引导（W22）
+///
+/// **读不到配置时返回 false（当作已看过）**，这是刻意选的：反过来会在配置
+/// 持续读不到时每次启动都弹一遍引导，那比"少引导一次"糟得多。
+Future<bool> _shouldShowOnboarding(PlainLeafDatabase db) async {
+  try {
+    final seen = await SettingsStore(db).readString(SettingKeys.onboardingSeen);
+    return seen != '1';
+  } on Object {
+    return false;
+  }
 }
 
 /// 回收站过期清理（失败静默；清理失败不得丢用户数据）

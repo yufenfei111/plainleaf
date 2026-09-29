@@ -82,6 +82,20 @@ class SettingsPage extends ConsumerWidget {
           _sectionCard(context, '安全', <Widget>[
           _appLockTile(context, ref),
           ]),
+          _sectionCard(context, '帮助', <Widget>[
+            ListTile(
+              leading: const Icon(Icons.menu_book_outlined),
+              title: const Text('操作手册'),
+              subtitle: const Text('每个功能的用法，随时可查'),
+              onTap: () => context.push('/manual'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.tips_and_updates_outlined),
+              title: const Text('重看新手引导'),
+              subtitle: const Text('再过一遍首次打开时的四屏介绍'),
+              onTap: () => context.push('/onboarding'),
+            ),
+          ]),
           ListTile(
             leading: const Icon(Icons.info_outline),
             title: const Text('关于素页'),
