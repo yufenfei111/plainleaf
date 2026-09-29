@@ -91,4 +91,10 @@ abstract final class SettingKeys {
 
   /// 强调色种子（ARGB int 的字符串形式）
   static const accentSeed = 'theme.accent_seed';
+
+  /// 是否已看过新手引导（W22）。值为 `'1'` 表示看过。
+  ///
+  /// 键名带版本号后缀是刻意的：将来引导内容大改、需要重新引导一次时，
+  /// 换成 `onboarding.seen.v2` 即可，不必写迁移去清旧值。
+  static const onboardingSeen = 'onboarding.seen.v1';
 }
