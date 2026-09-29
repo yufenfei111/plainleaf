@@ -1,8 +1,19 @@
-# W16 发布检查清单 · 阶段 5（M5 v1.0.0）
+# 发布检查清单（阶段 5）
 
 > 制作于 2026-09-26，与提交 `d496c04`（发布构建配置）配套。
-> 本文件分两部分：**本机已完成并可复现的**，以及**必须由你（真机 / 账号 / 商店后台）执行的**。
-> 判据写清楚了，照着勾即可。
+> **2026-09-29 更新**：补上「Windows 开发者模式」这个前提，状态推进到 W20。
+> 文件名里的 `w16` 只是创建时间，**内容本身是常青的**（构建流程不随周次变化）。
+
+## 〇、先分清两条路（别把成本估错）
+
+| 目标 | 要做的事 | 状态 |
+|---|---|---|
+| **个人自用**（当前定位） | 只需 §2「开发者模式」+ §2「构建」 | ✅ **已全部打通** |
+| 上架应用商店 | 再加 §3「正式签名」+ §4/§5「走查 / 矩阵」+ §6 | ⬜ 未做，且**当前不计划做** |
+
+> 项目定位是**个人自用、无商业化计划**（见 `docs/DEVELOPMENT.md`）。
+> 所以 §3～§6 属于「将来真要发布时再回来看」的部分，平时不必维护。
+> 反过来，§3 开头那段说明也解释了**为什么个人自用可以跳过签名**。
 
 ---
 
@@ -10,15 +21,16 @@
 
 | 项 | 状态 |
 |---|---|
-| release APK 构建链 | ✅ 已打通并验证（`app-release.apk` 71.2 MB，BUILD_EXIT=0） |
-| release 包权限 | ✅ INTERNET / USE_BIOMETRIC / WRITE_EXTERNAL_STORAGE(max 29) / USE_FINGERPRINT |
-| release 包版本 | ✅ versionCode=15、versionName=0.4.0-beta、minSdk=24、targetSdk=36 |
+| Windows 开发者模式 | ✅ 已开启（`AllowDevelopmentWithoutDevLicense = 1`）—— **构建的前提**，见「第二个前提」|
+| release APK 构建链 | ✅ 已打通（`app-release.apk` **72.0 MB**，`BUILD_EXIT=0`，131s） |
+| release 包权限 | ✅ INTERNET / USE_BIOMETRIC / WRITE_EXTERNAL_STORAGE(max 29) / READ_MEDIA_IMAGES |
+| release 包版本 | ✅ **versionCode=20**、versionName=0.4.0-beta、minSdk=24、targetSdk=36 |
 | 混淆（R8） | ✅ 已启用，规则见 `android/app/proguard-rules.pro` |
-| 正式签名 | ⬜ **未配置**（无 `key.properties`，当前产出的是 debug 签名包，**不可分发**） |
-| release 包真机走查 | ⬜ **未做**（开混淆后必须人工过一轮主链路） |
-| 真机矩阵（≥3 台） | ⬜ 未做 |
-| 隐私政策 / 用户协议 | ⬜ 文档已写（`PRIVACY.md`），**待托管到可访问的 URL** |
-| 应用商店投递 | ⬜ 未做 |
+| release 包真机走查 | ✅ **已做**（iQOO 12，8 项全过：安装 / 数据保留 / 启动速度 / W19 附件可见性 / W20 文件名 / 类型筛选 / 音频元信息 / 相册滑动） |
+| 正式签名 | ⬜ 未配置 —— **个人自用不必配**（理由见 §3 开头） |
+| 真机矩阵（≥3 台） | ⬜ 未做（仅上架需要） |
+| 隐私政策 / 用户协议 | ⬜ 文档已写（`PRIVACY.md`），待托管（仅上架需要） |
+| 应用商店投递 | ⬜ 未做（当前无计划） |
 
 ---
 
@@ -33,6 +45,16 @@
 | 为什么以前没发现 | debug 构建走 JIT，**不需要 AOT**，所以 W1–W15 一直是正常的 |
 | ❌ 无效解法 | 用目录联接（junction）给项目一个 ASCII 入口 —— Gradle 会把联接**解析回真实路径**，错误信息里依旧是中文乱码 |
 | ✅ 有效解法 | **真正把代码放到纯 ASCII 路径下构建**（下面第 1 步） |
+
+### ⚠️ 第二个前提：Windows 开发者模式（2026-09-29 补）
+
+| 项 | 说明 |
+|---|---|
+| 现象 | `flutter pub get` 报 `Building with plugins requires symlink support` 并提示去开开发者模式；**若忽略它继续构建**，会在 Javac 阶段报 `找不到符号: 类 XxxPlugin`（插件代码压根没被链接进来）|
+| 根因 | Flutter 为平台插件建**符号链接**需要该权限。它与中文路径是两个独立问题，W16 时被前者盖住了 |
+| 为什么 W17 才暴露 | W17 首次新增平台插件（file_selector）。此前插件集固定，链接是历史上建好的，所以一直没触发 |
+| ✅ 解法 | 设置 → 系统 → 开发者选项 → 开启「开发者模式」<br>（或管理员执行 `reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock" /t REG_DWORD /f /v AllowDevelopmentWithoutDevLicense /d 1`）|
+| 校验 | `reg query "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock" /v AllowDevelopmentWithoutDevLicense` → 应为 `0x1` |
 
 ### 标准流程（已脚本化，自动同步代码）
 
@@ -67,12 +89,22 @@ echo -n "31927" > /c/plainleaf-release-src/proxy_port.txt
 **要出某个里程碑的包**：把 `run_release.bat` 里的 `set REF=dev` 改成对应 tag
 （如 `v0.4.0-beta`）再跑，脚本会同步并检出到那个 tag。
 
+**要出「还没推送」的分支**：构建目录的 `origin` 指向的是**本地主仓库**
+（`C:/Users/雨/Desktop/豆包/相册记事本项目/plainleaf`），不是 GitHub ——
+因为 github 常被代理挡住。好处是 `REF` 可以直接写**本地分支名**
+（如 `feat/w20-handoff-and-p1`），无需先推送。
+2026-09-29 出 W20 包时正是靠这一点（当时该分支的 PR 还没合并）。
+
 ### 首次准备（换机器时做一次）
+
+**先开 Windows 开发者模式**（见上面「第二个前提」—— 不开的话插件符号链接建不起来，
+`flutter pub get` 会直接失败）。然后：
 
 ```bash
 git clone "C:/Users/雨/Desktop/豆包/相册记事本项目/plainleaf" C:/plainleaf-release-src
 cd /c/plainleaf-release-src
-git remote set-url origin https://github.com/yufenfei111/plainleaf.git
+# origin 保持"本地主仓库"即可：不要改成 github —— 它常被代理挡住，
+# 且保持本地才能构建尚未推送的分支
 git config http.sslBackend openssl     # 本机 schannel 报吊销检查失败
 git config http.sslVerify false        # 代理没有本地根证书；只作用于这个构建目录
 printf '31927' > proxy_port.txt        # 端口以当时实际值为准
@@ -96,7 +128,16 @@ BT="C:/Users/雨/AppData/Local/Android/sdk/build-tools/36.1.0"
 
 ---
 
-## 三、配置正式签名（发布前**必做**）
+## 三、配置正式签名（**仅上架需要**）
+
+> **个人自用请跳过本节。** `android/app/build.gradle.kts` 本就有降级逻辑：
+> 没有 `key.properties` 时 release 构建**自动回退用 debug 签名**。
+> 因为 debug 签名与你自己原先装的包**同源**，可以**直接覆盖升级、数据不丢** ——
+> 2026-09-29 实测确认（SHA-256 `5fa5709a…`，覆盖安装后 8 项功能验证全过）。
+>
+> 只有要把包**发给别人**或**上架**时，才需要下面的正式签名。
+> （注意两种签名的包**不能互相覆盖**：换正式签名时必须卸载重装，
+> 所以真要走这条路，最好在做重要数据之前定下来。）
 
 > 现在 `android/key.properties` 不存在，构建会自动降级为 **debug 签名**并在 Gradle
 > 日志里打警告。debug 签名的包**不能上架、不能分发**。
