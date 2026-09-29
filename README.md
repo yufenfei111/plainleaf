@@ -14,7 +14,7 @@
 | 目标平台 | Android 优先，兼顾 Windows / iOS |
 | 开发模式 | 个人独立开发（课余） |
 | 计划周期 | 16 周（2026-09-07 启动） |
-| 当前版本 | `0.4.0-beta`（M4，阶段 4 已完成并合并入 dev）；M5 `v1.0.0` 为发布目标 |
+| 当前版本 | `0.4.0-beta`（阶段 5 开发中，W22）；**项目定位为个人自用，暂无上架计划** |
 | 里程碑 tag | `v0.1.0-alpha` / `v0.2.0` / `v0.3.0` / `v0.4.0-beta`（打点依据见 CHANGELOG 顶部索引） |
 
 ## 技术栈
@@ -43,3 +43,18 @@ Flutter 3.x（fvm 锁版）· Dart 3 · flutter_riverpod 2.x · go_router · Dri
 - 隐私政策：[PRIVACY.md](PRIVACY.md) —— 逐条对应代码事实（不收集、不联网、无第三方 SDK）
 - 发布检查清单：[docs/release-checklist-w16.md](docs/release-checklist-w16.md) —— 含 release 构建的 ASCII 路径约束、签名步骤、真机矩阵
 - 真机走查手册：[docs/device-checklist-w13-w14.md](docs/device-checklist-w13-w14.md) —— 26 条，含预期现象与失败判据
+
+## 许可
+
+**专有许可 · 保留所有权利（All rights reserved）。**
+
+本仓库公开可见仅用于展示与学习参考，**不构成任何使用授权**。未经版权持有人
+事先书面许可，不得复制、修改、分发本项目，或将其用于任何商业目的。
+
+| | |
+|---|---|
+| **允许** | Fork（GitHub 官方功能）、阅读学习、注明出处地引用少量代码片段、个人非商业性使用 |
+| **禁止** | 复制分发、修改演绎、商业使用、去除或篡改署名 |
+
+完整条款见 [LICENSE](LICENSE)。第三方开源组件（Flutter、Drift 等）仍受其各自
+许可约束，本声明不改变这些条款。

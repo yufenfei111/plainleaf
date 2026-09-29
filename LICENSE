@@ -1,0 +1,89 @@
+# 专有许可声明 · Proprietary License
+
+Copyright (c) 2026 yufenfei111. All rights reserved.
+
+版权所有 (c) 2026 yufenfei111，**保留所有权利**。
+
+本声明适用于**素页（PlainLeaf）**项目，包括本仓库中的全部原创源代码、文档、
+界面设计与视觉资源（以下称"本项目"）。
+
+---
+
+## 一、权利保留
+
+本项目的一切权利归版权持有人所有。
+
+**本仓库公开可见，不等于授权使用。** 本文件未明确授予的权利，一律保留。
+这是《伯尔尼公约》与各国著作权法下的默认状态：作品一经创作即受保护，
+"没有写许可"**不等于**"可以随便用"。
+
+## 二、未经书面许可，禁止的行为
+
+任何个人或组织，未经版权持有人**事先书面许可**，不得：
+
+1. 复制、发布、分发、公开传播本项目的全部或任何实质性部分；
+2. 修改、改编、翻译、演绎本项目，或基于本项目创建衍生作品；
+3. 将本项目或其衍生作品用于**任何商业目的**，包括但不限于：销售、
+   内置进付费产品、用于提供有偿服务、用于引流变现；
+4. 移除、遮蔽或篡改本项目中的任何版权声明、署名或标识；
+5. 以本项目为基础发布同名或易与本项目混淆的应用。
+
+## 三、明确允许的行为
+
+以下行为**无需**另行获得许可：
+
+1. **通过 GitHub 官方功能 Fork 本仓库** —— 这是 GitHub 服务条款授予的能力，
+   但 Fork 出的副本同样受本声明约束；
+2. **为学习、研究、技术评估目的阅读本项目的源代码**；
+3. **在注明出处（项目名 + 仓库地址）的前提下，引用少量代码片段**用于技术文章、
+   教学或讨论；
+4. **个人非商业性地自行构建、安装、使用本应用**。
+
+## 四、第三方组件
+
+本项目使用了若干开源第三方组件（Flutter、Drift、Riverpod 等）。这些组件
+**仍受其各自许可条款约束**（多为 MIT / BSD 类），本声明**不改变、也不削弱**
+这些条款赋予你的权利。完整依赖清单见 `pubspec.lock`。
+
+> 换言之：本声明限制的是**本项目的原创部分**，不影响你依第三方许可享有的权利。
+
+## 五、免责声明
+
+本软件按"现状"（AS IS）提供，不附带任何明示或暗示的担保，包括但不限于对
+适销性、特定用途适用性及不侵权的担保。在任何情况下，版权持有人均不对因使用
+或无法使用本软件而产生的任何索赔、损害或其他责任负责。
+
+## 六、许可变更
+
+版权持有人保留在未来变更本许可条款的权利。变更**仅对变更之后发布的版本生效**；
+已依旧条款合法获得的授权不受影响。
+
+---
+
+## 如需授权
+
+如需将本项目用于上述未明确允许的用途，请联系版权持有人获取书面授权。
+
+---
+
+## English Summary (reference only — the Chinese text above prevails)
+
+Copyright (c) 2026 yufenfei111. All rights reserved.
+
+This project is **proprietary**. Being publicly visible on GitHub does **not**
+grant you any license beyond what is stated above. In particular, you may
+**NOT** copy, redistribute, modify, or use this project (or any substantial
+part of it) for commercial purposes without prior written permission.
+
+You **MAY**: fork via GitHub's built-in feature, read the source for learning
+or evaluation, and quote short snippets with clear attribution. You may also
+build and use the app for your own non-commercial purposes.
+
+Third-party open-source components remain under their own licenses; this
+notice does not alter them.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED. IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM,
+DAMAGES OR OTHER LIABILITY ARISING FROM THE USE OF THE SOFTWARE.
+
+*Where the Chinese and English texts differ, the Chinese text prevails.*
